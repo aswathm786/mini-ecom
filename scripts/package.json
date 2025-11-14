@@ -1,0 +1,19 @@
+{
+  "name": "handmade-harmony-scripts",
+  "version": "1.0.0",
+  "description": "Utility scripts for Handmade Harmony",
+  "scripts": {
+    "seed-admin": "ts-node seed_admin.ts"
+  },
+  "dependencies": {
+    "mongodb": "^6.3.0",
+    "argon2": "^0.31.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
+

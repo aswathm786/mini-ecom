@@ -1,0 +1,15 @@
+[Unit]
+Description=MiniEcom Backup Timer
+Requires=miniecom-backup.service
+
+[Timer]
+# Run daily at 2:00 AM (adjust BACKUP_TIME in .env or modify OnCalendar)
+OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
+# Alternative: Use time from .env (requires systemd 239+)
+# OnCalendar=*-*-* %i:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

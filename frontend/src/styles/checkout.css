@@ -1,0 +1,42 @@
+/**
+ * Checkout Page Styles
+ * 
+ * Page-specific styles for checkout flow.
+ */
+
+/* Form field focus states */
+.checkout-form input:focus,
+.checkout-form select:focus,
+.checkout-form textarea:focus {
+  @apply ring-2 ring-primary-500 border-primary-500;
+}
+
+/* Radio button custom styling */
+.checkout-radio input[type="radio"]:checked + div {
+  @apply border-primary-600 bg-primary-50;
+}
+
+/* Loading spinner for payment processing */
+.payment-processing {
+  @apply relative;
+}
+
+.payment-processing::after {
+  content: '';
+  @apply absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center;
+}
+
+/* Address card hover effect */
+.address-card {
+  @apply transition-all duration-200;
+}
+
+.address-card:hover {
+  @apply shadow-md;
+}
+
+/* Coupon code input */
+.coupon-input:disabled {
+  @apply bg-gray-50 cursor-not-allowed;
+}
+

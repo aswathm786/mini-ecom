@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: handmade_harmony_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    environment:
+      MONGO_INITDB_DATABASE: handmade_harmony
+    networks:
+      - handmade_harmony_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/handmade_harmony --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: handmade_harmony_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../backend:/app/backend
+      - ../scripts:/app/scripts
+      - ../uploads:/app/uploads
+      - ../invoices:/app/invoices
+      - ../logs:/app/logs
+      - backend_node_modules:/app/backend/node_modules
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongo:27017/handmade_harmony
+    env_file:
+      - ../.env
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - handmade_harmony_network
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: handmade_harmony_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:5000
+    env_file:
+      - ../.env
+    depends_on:
+      - backend
+    networks:
+      - handmade_harmony_network
+    command: npm run dev
+
+  adminer:
+    image: adminer:latest
+    container_name: handmade_harmony_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mongo
+    depends_on:
+      - mongo
+    networks:
+      - handmade_harmony_network
+    profiles:
+      - tools
+
+volumes:
+  mongo_data:
+    driver: local
+  mongo_config:
+    driver: local
+  backend_node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local
+
+networks:
+  handmade_harmony_network:
+    driver: bridge
+

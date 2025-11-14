@@ -1,0 +1,20 @@
+/**
+ * Two-Factor Authentication Challenge Page
+ * 
+ * 2FA verification placeholder - will be fleshed out in later parts.
+ */
+
+export function TwoFAChallengePage() {
+  return (
+    <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="bg-white shadow-md rounded-lg p-8">
+        <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+          Two-Factor Authentication
+        </h1>
+        <p className="text-gray-600 mb-4">
+          2FA challenge form will be implemented in later parts.
+        </p>
+      </div>
+    </div>
+  );
+}

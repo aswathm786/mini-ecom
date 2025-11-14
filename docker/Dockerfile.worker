@@ -1,0 +1,35 @@
+# Worker Dockerfile
+# Background job processor (optional)
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install MongoDB tools
+RUN apk add --no-cache mongodb-tools
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Copy package files
+COPY backend/package*.json ./
+
+# Install production dependencies
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# Copy application
+COPY backend/dist ./dist
+COPY backend/src ./src
+
+# Create storage directories
+RUN mkdir -p storage/logs && \
+    chown -R nodejs:nodejs /app
+
+# Switch to non-root user
+USER nodejs
+
+# Start worker
+CMD ["node", "dist/worker.js"]
+

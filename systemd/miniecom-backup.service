@@ -1,0 +1,18 @@
+[Unit]
+Description=MiniEcom Backup Service
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/miniecom
+EnvironmentFile=/opt/miniecom/.env
+ExecStart=/opt/miniecom/scripts/backup.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=miniecom-backup
+
+# Optional: Run push_offsite.sh after backup
+# ExecStartPost=/opt/miniecom/scripts/push_offsite.sh
+
