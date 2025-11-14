@@ -16,7 +16,7 @@ Add the following screenshots to help users understand the application:
 - **File:** `add_product.png`
 - **Description:** Add new product form with all fields
 - **Size:** 1920x1080 recommended
-- **Location:** Admin > Products > Add New
+- **Location:** Admin > Catalog > Add New
 
 ### Order Details
 - **File:** `order_details.png`

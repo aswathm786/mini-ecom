@@ -51,7 +51,7 @@ After logging in, you'll see the admin dashboard with:
 
 ### Create a New Product
 
-1. Go to **Admin > Products**
+1. Go to **Admin > Catalog**
 2. Click **"Add New Product"** button
 3. Fill in the form:
    - **Name:** Product name (e.g., "Handmade Dreamcatcher")
@@ -67,14 +67,14 @@ After logging in, you'll see the admin dashboard with:
 
 ### Edit a Product
 
-1. Go to **Admin > Products**
+1. Go to **Admin > Catalog**
 2. Click on the product you want to edit
 3. Make changes
 4. Click **"Update Product"**
 
 ### Delete a Product
 
-1. Go to **Admin > Products**
+1. Go to **Admin > Catalog**
 2. Find the product
 3. Click **"Delete"** button
 4. Confirm deletion

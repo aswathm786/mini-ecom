@@ -138,7 +138,7 @@ cd frontend
 npm run dev
 ```
 
-**Frontend runs on:** http://localhost:5173
+**Frontend runs on:** http://localhost:5173 (Vite default, configured in vite.config.ts)
 
 **Features:**
 - Hot Module Replacement (HMR)
@@ -201,27 +201,15 @@ cd frontend
 npm test
 ```
 
-**Run with coverage:**
-```bash
-npm run test:coverage
-```
-
 **Watch mode:**
 ```bash
 npm run test:watch
 ```
 
-### Integration Tests
-
-**Backend integration tests:**
+**Run specific test file:**
 ```bash
-cd backend
-npm run test:integration
+npm test -- b1_checkout.test.ts
 ```
-
-**Requirements:**
-- MongoDB running
-- Test database configured in `.env`
 
 ---
 

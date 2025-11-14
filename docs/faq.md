@@ -205,7 +205,7 @@ See [docs/restore_quick.md](restore_quick.md) for quick restore steps.
 ### Q23: How do I add products?
 
 **A:** 
-1. Go to Admin > Products > Add New
+1. Go to Admin > Catalog > Add New
 2. Fill in name, description, price, images
 3. Select category
 4. Set stock quantity

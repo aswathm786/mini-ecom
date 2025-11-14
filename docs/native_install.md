@@ -154,39 +154,25 @@ cd ..
 # Windows: Check Services > MongoDB
 # macOS: brew services list
 
-# Run migrations
-cd backend
-node -e "
-const { MongoClient } = require('mongodb');
-require('dotenv').config();
-const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/miniecom';
-(async () => {
-  const client = new MongoClient(uri);
-  await client.connect();
-  const db = client.db();
-  // Run migrations from migrations/ directory
-  const fs = require('fs');
-  const path = require('path');
-  const migrations = fs.readdirSync('./migrations').sort();
-  for (const file of migrations) {
-    if (file.endsWith('.js')) {
-      console.log('Running migration:', file);
-      const migration = require(path.join('./migrations', file));
-      if (migration.up) await migration.up(db, client);
-    }
-  }
-  await client.close();
-})();
-"
-cd ..
+# Run migrations using the migrate script
+# Make sure you're in the project root directory
+./scripts/migrate.sh
 ```
 
-Or use the migrate script:
+**Note:** The migrate script requires `mongosh` (MongoDB shell) to be installed. If you don't have it:
+
+**Ubuntu/Debian:**
 ```bash
-# If you have mongosh installed
-mongosh "$MONGO_URI" --eval "db.createCollection('migrations')"
-# Then run migration files manually
+sudo apt-get install -y mongodb-mongosh
 ```
+
+**macOS:**
+```bash
+brew install mongosh
+```
+
+**Windows:**
+Download from: https://www.mongodb.com/try/download/shell
 
 ### Step 7: Seed Admin User
 
@@ -233,7 +219,7 @@ npm run build
 npm run preview  # Or serve with nginx/apache
 ```
 
-The frontend will run on http://localhost:5173 (Vite default) or http://localhost:3000
+The frontend will run on http://localhost:5173 (Vite default port)
 
 ---
 

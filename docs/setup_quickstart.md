@@ -182,7 +182,7 @@ You should now see the admin dashboard!
 
 ### Admin Tasks
 
-- **Add Products:** Admin > Products > Add New
+- **Add Products:** Admin > Catalog > Add New
 - **View Orders:** Admin > Orders
 - **Manage Users:** Admin > Users
 - **Configure Settings:** Admin > Settings

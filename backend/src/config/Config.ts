@@ -114,9 +114,9 @@ export const Config = {
   // Application
   NODE_ENV: get('NODE_ENV', 'development'),
   APP_NAME: get('APP_NAME', 'Handmade Harmony'),
-  APP_URL: get('APP_URL', 'http://localhost:3000'),
-  API_URL: get('API_URL', 'http://localhost:5000'),
-  PORT: int('PORT', 5000),
+  APP_URL: get('APP_URL', 'http://localhost:80'),
+  API_URL: get('API_URL', 'http://localhost:3000'),
+  PORT: int('PORT', 3000),
   
   // Database
   MONGODB_URI: get('MONGODB_URI') || get('MONGO_URI') || require('MONGO_URI'),
