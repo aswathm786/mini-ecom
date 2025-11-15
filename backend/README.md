@@ -46,7 +46,9 @@ backend/
 
 ### Install Dependencies
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm install
 ```
@@ -63,7 +65,9 @@ Ensure `.env` file exists in the project root (copy from `.env.example`). Requir
 
 ### Development
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm run dev
 ```
 
@@ -76,7 +80,9 @@ The server will:
 
 ### Build
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm run build
 ```
 
@@ -84,7 +90,9 @@ Compiles TypeScript to JavaScript in `dist/` directory.
 
 ### Production
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm start
 ```
 
@@ -92,7 +100,9 @@ Runs the compiled JavaScript from `dist/` directory.
 
 ### Testing
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm test
 ```
 

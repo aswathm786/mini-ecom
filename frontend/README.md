@@ -6,7 +6,9 @@ React + Vite + TypeScript frontend for the Handmade Harmony e-commerce platform.
 
 ### Installation
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm install
 ```
 
@@ -14,17 +16,21 @@ npm install
 
 Start the development server:
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm run dev
 ```
 
-The app will be available at `http://localhost:3000`.
+The app will be available at `http://localhost:5173` (Vite default port).
 
 ### Build
 
 Build for production:
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm run build
 ```
 
@@ -32,7 +38,9 @@ The output will be in the `dist/` directory.
 
 ### Preview Production Build
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm run preview
 ```
 
@@ -162,18 +170,24 @@ The app uses Tailwind CSS with a custom configuration:
 
 ## Development Scripts
 
-- `npm run dev` - Start dev server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run typecheck` - Type check without building
-- `npm run lint` - Run ESLint
-- `npm run format` - Format code with Prettier
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
+npm run dev        # Start dev server
+npm run build      # Build for production
+npm run preview    # Preview production build
+npm run typecheck  # Type check without building
+npm run lint       # Run ESLint
+npm run format     # Format code with Prettier
+```
 
 ## Testing
 
 Run tests:
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm test
 ```
 

@@ -39,6 +39,13 @@ sudo usermod -aG docker $USER
 Then log out and log back in.
 
 **Test Docker is working:**
+
+**On Windows (PowerShell or Command Prompt):**
+```powershell
+docker --version
+```
+
+**On Linux/Mac:**
 ```bash
 docker --version
 ```
@@ -58,8 +65,13 @@ You should see something like `Docker version 20.10.x`
 
 ### Option B: Using Git (If you have it)
 
-Open a terminal in the folder where you want the project and run:
+**On Windows (PowerShell or Command Prompt):**
+```powershell
+git clone https://github.com/yourusername/miniecom.git
+cd miniecom
+```
 
+**On Mac/Linux:**
 ```bash
 git clone https://github.com/yourusername/miniecom.git
 cd miniecom
@@ -121,6 +133,7 @@ Open a terminal in the project folder:
 
 Then run:
 
+**On Mac/Linux:**
 ```bash
 chmod +x scripts/quick_start.sh
 ./scripts/quick_start.sh
@@ -128,7 +141,18 @@ chmod +x scripts/quick_start.sh
 
 **On Windows (PowerShell):**
 ```powershell
+# If you have Git Bash installed:
 bash scripts/quick_start.sh
+
+# OR if you have WSL (Windows Subsystem for Linux):
+wsl bash scripts/quick_start.sh
+
+# OR manually run the steps:
+docker compose up -d
+# Wait for services to start, then:
+bash scripts/migrate.sh
+node scripts/seed_admin.js
+bash scripts/seed_sample_data.sh
 ```
 
 **What this does:**
@@ -211,7 +235,26 @@ See [docs/payment_setup.md](payment_setup.md) for details.
 
 **Solution:** Another application is using port 80 or 3000. Either:
 - Stop the other application
-- Change ports in `.env`:
+
+**On Windows (PowerShell):**
+```powershell
+# Find what's using the port
+netstat -ano | findstr :80
+netstat -ano | findstr :3000
+# Kill the process (replace PID with the number from above)
+taskkill /PID <PID> /F
+```
+
+**On Mac/Linux:**
+```bash
+# Find what's using the port
+sudo lsof -i :80
+sudo lsof -i :3000
+# Kill the process
+kill -9 <PID>
+```
+
+- Or change ports in `.env`:
   ```bash
   FRONTEND_PORT=8080
   API_PORT=3001
@@ -221,22 +264,32 @@ See [docs/payment_setup.md](payment_setup.md) for details.
 
 **Solution:** 
 1. Check if MongoDB container is running:
-   ```bash
-   docker compose ps
-   ```
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
+docker compose ps
+```
+
 2. Restart containers:
-   ```bash
-   docker compose restart
-   ```
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
+docker compose restart
+```
 
 ### "Admin login doesn't work"
 
 **Solution:**
 1. Check `.env` has correct `ADMIN_EMAIL` and `ADMIN_PASSWORD`
 2. Recreate admin user:
-   ```bash
-   node scripts/seed_admin.js
-   ```
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
+node scripts/seed_admin.js
+```
 
 ### Script Fails
 
@@ -244,11 +297,22 @@ See [docs/payment_setup.md](payment_setup.md) for details.
 1. Check Docker is running: `docker ps`
 2. Check logs: `docker compose logs`
 3. Try manual setup:
-   ```bash
-   docker compose up -d
-   ./scripts/migrate.sh
-   node scripts/seed_admin.js
-   ```
+
+**On Mac/Linux:**
+```bash
+docker compose up -d
+./scripts/migrate.sh
+node scripts/seed_admin.js
+```
+
+**On Windows (PowerShell):**
+```powershell
+docker compose up -d
+bash scripts/migrate.sh
+# OR using WSL:
+wsl bash scripts/migrate.sh
+node scripts/seed_admin.js
+```
 
 ---
 
@@ -257,9 +321,12 @@ See [docs/payment_setup.md](payment_setup.md) for details.
 If you're stuck:
 
 1. **Check the logs:**
-   ```bash
-   docker compose logs
-   ```
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
+docker compose logs
+```
 
 2. **Check troubleshooting guide:** [docs/troubleshooting.md](troubleshooting.md)
 
@@ -274,13 +341,17 @@ If you're stuck:
 
 To stop the application:
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
 docker compose down
 ```
 
 To start it again:
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
 docker compose up -d
 ```
 

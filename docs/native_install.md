@@ -101,6 +101,13 @@ mongosh --version
 
 ### Step 1: Clone or Download the Project
 
+**On Windows (PowerShell):**
+```powershell
+git clone https://github.com/yourusername/miniecom.git
+cd miniecom
+```
+
+**On Mac/Linux:**
 ```bash
 git clone https://github.com/yourusername/miniecom.git
 cd miniecom
@@ -110,21 +117,35 @@ Or download as ZIP and extract.
 
 ### Step 2: Configure Environment
 
+**On Windows (PowerShell):**
+```powershell
+Copy-Item .env.example .env
+```
+
+**On Mac/Linux:**
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env` and update:
 - `MONGO_URI` - Change to: `mongodb://localhost:27017/miniecom`
-- `JWT_SECRET` - Generate with: `openssl rand -base64 32`
-- `SESSION_SECRET` - Generate with: `openssl rand -base64 32`
-- `CSRF_SECRET` - Generate with: `openssl rand -base64 32`
+- `JWT_SECRET` - Generate with:
+  - **Windows (PowerShell):** `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))`
+  - **Mac/Linux:** `openssl rand -base64 32`
+- `SESSION_SECRET` - Generate with:
+  - **Windows (PowerShell):** `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))`
+  - **Mac/Linux:** `openssl rand -base64 32`
+- `CSRF_SECRET` - Generate with:
+  - **Windows (PowerShell):** `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))`
+  - **Mac/Linux:** `openssl rand -base64 32`
 - `ADMIN_EMAIL` - Your admin email
 - `ADMIN_PASSWORD` - Your admin password
 
 ### Step 3: Install Backend Dependencies
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm install
 cd ..
@@ -132,7 +153,9 @@ cd ..
 
 ### Step 4: Install Frontend Dependencies
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd frontend
 npm install
 cd ..
@@ -140,7 +163,9 @@ cd ..
 
 ### Step 5: Build Backend
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm run build
 cd ..
@@ -148,15 +173,43 @@ cd ..
 
 ### Step 6: Run Database Migrations
 
-```bash
-# Make sure MongoDB is running
-# Ubuntu: sudo systemctl status mongod
-# Windows: Check Services > MongoDB
-# macOS: brew services list
+**Make sure MongoDB is running:**
 
-# Run migrations using the migrate script
+**On Windows:**
+- Open Services (Win+R, type `services.msc`)
+- Find "MongoDB" service and start it
+- OR use PowerShell (as Administrator): `Start-Service MongoDB`
+
+**On Ubuntu:**
+```bash
+sudo systemctl status mongod
+sudo systemctl start mongod
+```
+
+**On macOS:**
+```bash
+brew services list
+brew services start mongodb-community@7.0
+```
+
+**Run migrations:**
+
+**On Mac/Linux:**
+```bash
 # Make sure you're in the project root directory
 ./scripts/migrate.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+# Using Git Bash (if installed):
+bash scripts/migrate.sh
+
+# OR using WSL:
+wsl bash scripts/migrate.sh
+
+# OR directly with Node.js (if you have a migration runner):
+# Check backend/migrations/ directory for migration files
 ```
 
 **Note:** The migrate script requires `mongosh` (MongoDB shell) to be installed. If you don't have it:
@@ -172,30 +225,42 @@ brew install mongosh
 ```
 
 **Windows:**
-Download from: https://www.mongodb.com/try/download/shell
+1. Download MongoDB Shell from: https://www.mongodb.com/try/download/shell
+2. Install it and add to PATH
+3. OR use the MongoDB installation that includes mongosh
 
 ### Step 7: Seed Admin User
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
 node scripts/seed_admin.js
 ```
 
 ### Step 8: Seed Sample Data (Optional)
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
 node backend/scripts/seed_sample_data.js
 ```
 
 ### Step 9: Start Backend Server
 
 **Development mode (with auto-reload):**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm run dev
 ```
 
 **Production mode:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm start
 ```
@@ -207,13 +272,19 @@ The backend will run on http://localhost:3000
 **Open a new terminal window:**
 
 **Development mode:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd frontend
 npm run dev
 ```
 
 **Production mode (build first):**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd frontend
 npm run build
 npm run preview  # Or serve with nginx/apache
@@ -252,13 +323,19 @@ UPLOAD_DIR=./storage/uploads
 ### Development Mode
 
 **Terminal 1 - Backend:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm run dev
 ```
 
 **Terminal 2 - Frontend:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd frontend
 npm run dev
 ```
@@ -266,13 +343,19 @@ npm run dev
 ### Production Mode
 
 **Build frontend:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd frontend
 npm run build
 ```
 
 **Start backend:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm start
 ```
@@ -280,13 +363,18 @@ npm start
 **Serve frontend (using a web server):**
 
 **Option 1: Using serve (npm package)**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm install -g serve
 cd frontend
 serve -s dist -l 80
 ```
 
-**Option 2: Using nginx**
+**Option 2: Using nginx (Linux/Mac only)**
+
+**On Linux:**
 ```bash
 # Install nginx
 sudo apt-get install nginx
@@ -297,6 +385,11 @@ sudo cp -r frontend/dist/* /var/www/html/
 # Configure nginx (see nginx/miniecom.conf for example)
 ```
 
+**On Windows:**
+- Install nginx for Windows from: http://nginx.org/en/download.html
+- Copy `frontend/dist/*` to nginx html directory
+- Configure nginx (see nginx/miniecom.conf for example)
+
 ---
 
 ## Troubleshooting
@@ -304,32 +397,48 @@ sudo cp -r frontend/dist/* /var/www/html/
 ### MongoDB Connection Failed
 
 **Check MongoDB is running:**
+
+**On Windows:**
+- Open Services (Win+R, type `services.msc`)
+- Find "MongoDB" service and check if it's running
+- OR use PowerShell: `Get-Service MongoDB`
+
+**On Ubuntu:**
 ```bash
-# Ubuntu
 sudo systemctl status mongod
+```
 
-# Windows
-# Check Services > MongoDB
-
-# macOS
+**On macOS:**
+```bash
 brew services list
 ```
 
 **Test connection:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
 mongosh mongodb://localhost:27017
 ```
 
 ### Port Already in Use
 
 **Find process using port:**
+
+**On Windows (PowerShell):**
+```powershell
+netstat -ano | findstr :3000
+netstat -ano | findstr :5173
+# Kill process (replace PID with the number from above)
+taskkill /PID <PID> /F
+```
+
+**On Linux/macOS:**
 ```bash
-# Linux/macOS
 sudo lsof -i :3000
 sudo lsof -i :5173
-
-# Windows
-netstat -ano | findstr :3000
+# Kill process
+kill -9 <PID>
 ```
 
 **Kill process or change port:**
@@ -339,6 +448,19 @@ netstat -ano | findstr :3000
 ### Module Not Found Errors
 
 **Reinstall dependencies:**
+
+**On Windows (PowerShell):**
+```powershell
+cd backend
+Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+npm install
+
+cd ../frontend
+Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+npm install
+```
+
+**On Mac/Linux:**
 ```bash
 cd backend
 rm -rf node_modules package-lock.json
@@ -352,6 +474,17 @@ npm install
 ### Permission Errors
 
 **Storage/uploads directory:**
+
+**On Windows (PowerShell):**
+```powershell
+# Create directory if it doesn't exist
+New-Item -ItemType Directory -Force -Path backend/storage/uploads
+
+# Grant permissions (run as Administrator if needed)
+icacls backend/storage /grant Users:F /T
+```
+
+**On Mac/Linux:**
 ```bash
 mkdir -p backend/storage/uploads
 chmod -R 775 backend/storage

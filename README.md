@@ -110,6 +110,7 @@ docker compose ps
 
 **📍 Run on: HOST (your computer)**
 
+**On Linux/Mac:**
 ```bash
 # Run database migrations
 ./scripts/migrate.sh
@@ -119,6 +120,31 @@ node scripts/seed_admin.js
 
 # (Optional) Seed sample products
 ./scripts/seed_sample_data.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+# Run database migrations (using Git Bash or WSL)
+bash scripts/migrate.sh
+# OR if you have WSL:
+wsl bash scripts/migrate.sh
+
+# Create admin user
+node scripts/seed_admin.js
+
+# (Optional) Seed sample products
+bash scripts/seed_sample_data.sh
+# OR using WSL:
+wsl bash scripts/seed_sample_data.sh
+```
+
+**Alternative for Windows (Direct Node.js):**
+If you prefer not to use bash scripts, you can run migrations directly:
+```powershell
+# Make sure MongoDB is running first
+# Then run migrations using Node.js directly
+# (Check backend/migrations/ directory for migration files)
+node backend/migrations/run.js
 ```
 
 ### Step 5: Access the Application
@@ -188,9 +214,16 @@ cd mini-ecom
 
 **📍 Run on: HOST (your computer)**
 
+**On Linux/Mac:**
 ```bash
 cp .env.example .env
 nano .env  # or use your favorite editor
+```
+
+**On Windows (PowerShell):**
+```powershell
+Copy-Item .env.example .env
+notepad .env  # or use: code .env, notepad++ .env
 ```
 
 **Critical settings to configure:**
@@ -234,6 +267,7 @@ docker compose up -d
 
 **📍 Run on: HOST (your computer)**
 
+**On Linux/Mac:**
 ```bash
 # Run database migrations
 ./scripts/migrate.sh
@@ -245,14 +279,46 @@ node scripts/seed_admin.js
 ./scripts/seed_sample_data.sh
 ```
 
+**On Windows (PowerShell):**
+```powershell
+# Run database migrations (using Git Bash or WSL)
+bash scripts/migrate.sh
+# OR using WSL:
+wsl bash scripts/migrate.sh
+
+# Create admin user
+node scripts/seed_admin.js
+
+# Seed sample data (optional)
+bash scripts/seed_sample_data.sh
+# OR using WSL:
+wsl bash scripts/seed_sample_data.sh
+```
+
 #### Step 5: Verify Installation
 
 **📍 Run on: HOST (your computer)**
 
+**On Linux/Mac:**
 ```bash
 # Check health endpoints
 curl http://localhost:3000/api/health
 curl http://localhost/health
+
+# Check container status
+docker compose ps
+
+# View logs
+docker compose logs -f
+```
+
+**On Windows (PowerShell):**
+```powershell
+# Check health endpoints
+Invoke-WebRequest -Uri http://localhost:3000/api/health
+Invoke-WebRequest -Uri http://localhost/health
+# OR use curl if available:
+curl http://localhost:3000/api/health
 
 # Check container status
 docker compose ps
@@ -427,12 +493,25 @@ docker compose down
 ```
 
 **Without Docker:**
+
+**On Linux/Mac:**
 ```bash
 # Terminal 1: Backend
 cd backend
 npm run dev  # Uses nodemon for auto-reload
 
 # Terminal 2: Frontend
+cd frontend
+npm run dev  # Vite dev server with HMR
+```
+
+**On Windows (PowerShell):**
+```powershell
+# Terminal 1: Backend (PowerShell)
+cd backend
+npm run dev  # Uses nodemon for auto-reload
+
+# Terminal 2: Frontend (PowerShell)
 cd frontend
 npm run dev  # Vite dev server with HMR
 ```
@@ -455,7 +534,20 @@ docker compose down
 ```
 
 **Without Docker:**
+
+**On Linux/Mac:**
 ```bash
+# Build frontend
+cd frontend
+npm run build
+
+# Start backend
+cd backend
+npm start
+```
+
+**On Windows (PowerShell):**
+```powershell
 # Build frontend
 cd frontend
 npm run build
@@ -660,6 +752,7 @@ docker stats
 
 **📍 Run on: HOST (your computer)**
 
+**On Linux/Mac:**
 ```bash
 # Run migrations
 ./scripts/migrate.sh
@@ -677,10 +770,35 @@ mongosh mongodb://localhost:27017/miniecom
 ./scripts/restore.sh --backup storage/backups/YYYYMMDD_HHMMSS.tar.gz --confirm
 ```
 
+**On Windows (PowerShell):**
+```powershell
+# Run migrations
+bash scripts/migrate.sh
+# OR using WSL:
+wsl bash scripts/migrate.sh
+
+# Access MongoDB shell (Docker)
+docker compose exec mongo mongosh -u admin -p changeme
+
+# Access MongoDB shell (Native)
+mongosh mongodb://localhost:27017/miniecom
+
+# Backup database
+bash scripts/backup.sh
+# OR using WSL:
+wsl bash scripts/backup.sh
+
+# Restore database
+bash scripts/restore.sh --backup storage/backups/YYYYMMDD_HHMMSS.tar.gz --confirm
+# OR using WSL:
+wsl bash scripts/restore.sh --backup storage/backups/YYYYMMDD_HHMMSS.tar.gz --confirm
+```
+
 ### Scripts
 
 **📍 Run on: HOST (your computer)**
 
+**On Linux/Mac:**
 ```bash
 # Quick start (sets up everything)
 ./scripts/quick_start.sh
@@ -702,6 +820,41 @@ node scripts/seed_admin.js
 
 # Security audit
 ./scripts/sec_audit.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+# Quick start (sets up everything)
+bash scripts/quick_start.sh
+# OR using WSL:
+wsl bash scripts/quick_start.sh
+
+# Create admin user
+node scripts/seed_admin.js
+
+# Seed sample data
+bash scripts/seed_sample_data.sh
+# OR using WSL:
+wsl bash scripts/seed_sample_data.sh
+
+# Health check
+bash scripts/healthcheck.sh
+# OR using WSL:
+wsl bash scripts/healthcheck.sh
+
+# Fix permissions (Windows doesn't need chmod, but you can set file attributes)
+# For Windows, permissions are managed differently
+icacls storage /grant Users:F /T
+
+# Monitor services
+bash scripts/monitor_services.sh
+# OR using WSL:
+wsl bash scripts/monitor_services.sh
+
+# Security audit
+bash scripts/sec_audit.sh
+# OR using WSL:
+wsl bash scripts/sec_audit.sh
 ```
 
 ### Container-Specific Commands
@@ -881,7 +1034,21 @@ docker compose exec frontend npm test
 
 1. Create migration file: `backend/migrations/YYYYMMDDHHMMSS_description.js`
 2. Write idempotent migration (see [docs/developer_guide.md](docs/developer_guide.md))
-3. Run: `./scripts/migrate.sh`
+3. Run migrations:
+
+**On Linux/Mac:**
+```bash
+./scripts/migrate.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+bash scripts/migrate.sh
+# OR using WSL:
+wsl bash scripts/migrate.sh
+# OR directly with Node.js:
+node backend/migrations/run.js
+```
 
 ---
 
@@ -946,6 +1113,7 @@ cat .env | grep MONGO
 
 **📍 Run on: HOST (your computer)**
 
+**On Linux/Mac:**
 ```bash
 # Fix permissions
 ./scripts/fix-perms.sh
@@ -953,6 +1121,17 @@ cat .env | grep MONGO
 # Or manually
 chmod -R 775 storage/
 chown -R $USER:$USER storage/
+```
+
+**On Windows (PowerShell):**
+```powershell
+# Windows handles file permissions differently
+# Ensure you have write access to the storage folder
+# If needed, run PowerShell as Administrator and grant permissions:
+icacls storage /grant Users:F /T
+
+# Or manually set folder permissions through File Explorer:
+# Right-click storage folder > Properties > Security > Edit > Add your user > Full Control
 ```
 
 **5. CSRF/Session errors:**
@@ -983,13 +1162,31 @@ chown -R $USER:$USER storage/
 - Retention: 14 days daily, 12 weeks weekly, 12 months monthly
 
 **Manual backup:**
+
+**On Linux/Mac:**
 ```bash
 ./scripts/backup.sh
 ```
 
+**On Windows (PowerShell):**
+```powershell
+bash scripts/backup.sh
+# OR using WSL:
+wsl bash scripts/backup.sh
+```
+
 **Restore from backup:**
+
+**On Linux/Mac:**
 ```bash
 ./scripts/restore.sh --backup storage/backups/YYYYMMDD_HHMMSS.tar.gz --confirm
+```
+
+**On Windows (PowerShell):**
+```powershell
+bash scripts/restore.sh --backup storage/backups/YYYYMMDD_HHMMSS.tar.gz --confirm
+# OR using WSL:
+wsl bash scripts/restore.sh --backup storage/backups/YYYYMMDD_HHMMSS.tar.gz --confirm
 ```
 
 See [docs/backup_restore.md](docs/backup_restore.md) for details.
@@ -999,13 +1196,33 @@ See [docs/backup_restore.md](docs/backup_restore.md) for details.
 **📍 Run on: HOST (your computer)**
 
 **Service monitoring:**
+
+**On Linux/Mac:**
 ```bash
 ./scripts/monitor_services.sh
 ```
 
+**On Windows (PowerShell):**
+```powershell
+bash scripts/monitor_services.sh
+# OR using WSL:
+wsl bash scripts/monitor_services.sh
+```
+
 **Disk space monitoring:**
+
+**On Linux/Mac:**
 ```bash
 ./scripts/disk_alert.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+bash scripts/disk_alert.sh
+# OR using WSL:
+wsl bash scripts/disk_alert.sh
+# OR use PowerShell native command:
+Get-PSDrive C | Select-Object Used,Free
 ```
 
 See [docs/monitoring.md](docs/monitoring.md) for details.
@@ -1015,13 +1232,31 @@ See [docs/monitoring.md](docs/monitoring.md) for details.
 **📍 Run on: HOST (your computer)**
 
 **Run maintenance tasks:**
+
+**On Linux/Mac:**
 ```bash
 ./scripts/run_maintenance_tasks.sh
 ```
 
+**On Windows (PowerShell):**
+```powershell
+bash scripts/run_maintenance_tasks.sh
+# OR using WSL:
+wsl bash scripts/run_maintenance_tasks.sh
+```
+
 **Enter maintenance mode:**
+
+**On Linux/Mac:**
 ```bash
 ./scripts/enter_maintenance.sh "Scheduled maintenance"
+```
+
+**On Windows (PowerShell):**
+```powershell
+bash scripts/enter_maintenance.sh "Scheduled maintenance"
+# OR using WSL:
+wsl bash scripts/enter_maintenance.sh "Scheduled maintenance"
 ```
 
 See [docs/maintenance.md](docs/maintenance.md) for details.
@@ -1201,12 +1436,25 @@ A: Most commands run on the HOST (your computer). Commands that need to run insi
 If you encounter issues:
 
 1. **Check logs:**
+
+   **On Linux/Mac:**
    ```bash
    # Docker
    docker compose logs -f
    
    # Native
    tail -f storage/logs/ops.log
+   ```
+
+   **On Windows (PowerShell):**
+   ```powershell
+   # Docker
+   docker compose logs -f
+   
+   # Native
+   Get-Content storage/logs/ops.log -Wait -Tail 50
+   # OR using WSL:
+   wsl tail -f storage/logs/ops.log
    ```
 
 2. **Check troubleshooting guide:** [docs/troubleshooting.md](docs/troubleshooting.md)
