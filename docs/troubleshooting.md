@@ -30,13 +30,17 @@ Common issues and their solutions.
 **Solutions:**
 
 1. **Check Docker is running:**
-   ```bash
+
+   **On Windows (PowerShell) or Mac/Linux:**
+   ```powershell
+   # Same command works on all platforms
    docker ps
    ```
-   If error, start Docker Desktop or:
-   ```bash
-   sudo systemctl start docker
-   ```
+   
+   If error:
+   - **Windows:** Start Docker Desktop
+   - **Linux:** `sudo systemctl start docker`
+   - **Mac:** Start Docker Desktop
 
 2. **Check logs:**
    ```bash
@@ -91,8 +95,15 @@ Common issues and their solutions.
 **Solutions:**
 
 1. **Check Dockerfile exists:**
+
+   **On Mac/Linux:**
    ```bash
    ls -la docker/Dockerfile.*
+   ```
+
+   **On Windows (PowerShell):**
+   ```powershell
+   Get-ChildItem docker/Dockerfile.*
    ```
 
 2. **Check docker-compose.yml paths:**

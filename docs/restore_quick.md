@@ -8,8 +8,14 @@ This is a quick reference for restoring your store from a backup. For detailed i
 
 ### Step 1: Find Your Backup
 
+**On Mac/Linux:**
 ```bash
 ls -lh storage/backups/
+```
+
+**On Windows (PowerShell):**
+```powershell
+Get-ChildItem storage/backups/ | Format-Table Name, Length, LastWriteTime
 ```
 
 You'll see files like:
@@ -21,29 +27,64 @@ You'll see files like:
 ### Step 2: Restore
 
 **If backup is encrypted:**
+
+**On Mac/Linux:**
 ```bash
 # Decrypt first
 ./scripts/decrypt_backup.sh storage/backups/20240101_020000.tar.gz.enc storage/backups/20240101_020000.tar.gz
 ```
 
+**On Windows (PowerShell):**
+```powershell
+# Decrypt first
+bash scripts/decrypt_backup.sh storage/backups/20240101_020000.tar.gz.enc storage/backups/20240101_020000.tar.gz
+# OR using WSL:
+wsl bash scripts/decrypt_backup.sh storage/backups/20240101_020000.tar.gz.enc storage/backups/20240101_020000.tar.gz
+```
+
 **Restore:**
+
+**On Mac/Linux:**
 ```bash
 ./scripts/restore.sh --backup storage/backups/20240101_020000.tar.gz --confirm
 ```
 
+**On Windows (PowerShell):**
+```powershell
+bash scripts/restore.sh --backup storage/backups/20240101_020000.tar.gz --confirm
+# OR using WSL:
+wsl bash scripts/restore.sh --backup storage/backups/20240101_020000.tar.gz --confirm
+```
+
 ### Step 3: Restart Services
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same command works on all platforms
 docker compose restart
 ```
 
 ### Step 4: Verify
 
+**On Mac/Linux:**
 ```bash
 # Check health
 ./scripts/healthcheck.sh
 
 # Test login
+curl http://localhost:3000/api/health
+```
+
+**On Windows (PowerShell):**
+```powershell
+# Check health
+bash scripts/healthcheck.sh
+# OR using WSL:
+wsl bash scripts/healthcheck.sh
+
+# Test login
+Invoke-WebRequest -Uri http://localhost:3000/api/health
+# OR use curl if available:
 curl http://localhost:3000/api/health
 ```
 

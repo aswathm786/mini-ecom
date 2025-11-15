@@ -69,13 +69,19 @@ miniecom/
 ### Initial Setup
 
 1. **Clone repository:**
-   ```bash
+
+   **On Windows (PowerShell) or Mac/Linux:**
+   ```powershell
+   # Same commands work on all platforms
    git clone https://github.com/yourusername/miniecom.git
    cd miniecom
    ```
 
 2. **Install dependencies:**
-   ```bash
+
+   **On Windows (PowerShell) or Mac/Linux:**
+   ```powershell
+   # Same commands work on all platforms
    # Backend
    cd backend
    npm install
@@ -86,12 +92,36 @@ miniecom/
    ```
 
 3. **Configure environment:**
+
+   **On Windows (PowerShell):**
+   ```powershell
+   Copy-Item .env.example .env
+   # Edit .env with your settings
+   notepad .env
+   ```
+
+   **On Mac/Linux:**
    ```bash
    cp .env.example .env
    # Edit .env with your settings
+   nano .env
    ```
 
 4. **Start MongoDB:**
+
+   **On Windows (PowerShell):**
+   ```powershell
+   # Using Docker (same on all platforms)
+   docker compose up -d mongo
+   
+   # Or native MongoDB
+   # Open Services (Win+R, type services.msc)
+   # Find "MongoDB" service and start it
+   # OR use PowerShell (as Administrator):
+   Start-Service MongoDB
+   ```
+
+   **On Mac/Linux:**
    ```bash
    # Using Docker
    docker compose up -d mongo
@@ -101,8 +131,17 @@ miniecom/
    ```
 
 5. **Run migrations:**
+
+   **On Mac/Linux:**
    ```bash
    ./scripts/migrate.sh
+   ```
+
+   **On Windows (PowerShell):**
+   ```powershell
+   bash scripts/migrate.sh
+   # OR using WSL:
+   wsl bash scripts/migrate.sh
    ```
 
 ---
@@ -218,8 +257,17 @@ npm test -- b1_checkout.test.ts
 ### Creating a Migration
 
 1. **Create migration file:**
+
+   **On Mac/Linux:**
    ```bash
    touch backend/migrations/$(date +%Y%m%d%H%M%S)_your_migration_name.js
+   ```
+
+   **On Windows (PowerShell):**
+   ```powershell
+   # Create file with timestamp
+   $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+   New-Item -Path "backend/migrations/${timestamp}_your_migration_name.js" -ItemType File
    ```
 
 2. **Write migration:**
@@ -248,8 +296,17 @@ npm test -- b1_checkout.test.ts
    ```
 
 3. **Run migration:**
+
+   **On Mac/Linux:**
    ```bash
    ./scripts/migrate.sh
+   ```
+
+   **On Windows (PowerShell):**
+   ```powershell
+   bash scripts/migrate.sh
+   # OR using WSL:
+   wsl bash scripts/migrate.sh
    ```
 
 ### Migration Best Practices
@@ -541,12 +598,18 @@ See [docs/payment_setup.md](payment_setup.md) for Razorpay webhook setup.
 ### Code Formatting
 
 **Use Prettier:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm run format
 ```
 
 **Use ESLint:**
-```bash
+
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 npm run lint
 ```
 
@@ -557,8 +620,15 @@ npm run lint
 ### Backend Debugging
 
 **Enable debug logs:**
+
+**On Mac/Linux:**
 ```bash
 DEBUG=* npm run dev
+```
+
+**On Windows (PowerShell):**
+```powershell
+$env:DEBUG="*"; npm run dev
 ```
 
 **Use VS Code debugger:**
@@ -583,7 +653,9 @@ console.log('Debug:', data);
 
 ### Backend
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd backend
 npm run build
 npm start
@@ -591,7 +663,9 @@ npm start
 
 ### Frontend
 
-```bash
+**On Windows (PowerShell) or Mac/Linux:**
+```powershell
+# Same commands work on all platforms
 cd frontend
 npm run build
 # Output in frontend/dist/

@@ -29,9 +29,18 @@ Backups are stored in `storage/backups/` by default and can be encrypted and pus
 
 Run the backup script manually:
 
+**On Mac/Linux:**
 ```bash
 cd /opt/miniecom
 ./scripts/backup.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+cd C:\path\to\miniecom
+bash scripts/backup.sh
+# OR using WSL:
+wsl bash scripts/backup.sh
 ```
 
 ### Automated Backups
@@ -66,8 +75,16 @@ crontab -e
 
 Before relying on backups, test the backup process:
 
+**On Mac/Linux:**
 ```bash
 ./scripts/test_backup.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+bash scripts/test_backup.sh
+# OR using WSL:
+wsl bash scripts/test_backup.sh
 ```
 
 This creates a test backup and validates all components.
