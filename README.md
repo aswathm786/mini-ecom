@@ -426,7 +426,7 @@ SMTP_HOST=smtp.mailtrap.io
 SMTP_PORT=2525
 SMTP_USER=your_smtp_username
 SMTP_PASS=your_smtp_password
-SMTP_FROM="Handmade Harmony <noreply@handmadeharmony.com>"
+SMTP_FROM="Your Store Name <noreply@yourdomain.com>"
 ```
 
 **For production**, use a real SMTP service like:
@@ -1471,10 +1471,8 @@ If you encounter issues:
 
 **Repository:** https://github.com/aswathm786/mini-ecom
 
-**Store Owner Contact** (update this section):
-- Email: support@handmadeharmony.com
-- Phone: +1-234-567-8900
-- Website: https://handmadeharmony.com
+**Store Owner Contact:**
+- Email: aswathm7866@gmail.com
 
 ---
 

@@ -19,7 +19,7 @@ import * as argon2 from 'argon2';
 require('dotenv').config();
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/handmade_harmony';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@handmadeharmony.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeThisPassword123!';
 
 interface User {

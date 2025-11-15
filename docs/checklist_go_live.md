@@ -290,8 +290,7 @@ server {
 ## Emergency Contacts
 
 **Store Owner:**
-- Email: support@yourstore.com
-- Phone: +1-234-567-8900
+- Email: aswathm7866@gmail.com
 
 **Hosting Provider:**
 - Support: [your hosting support contact]

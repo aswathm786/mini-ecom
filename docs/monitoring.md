@@ -158,7 +158,7 @@ Configured in `.env`:
 Configure email alerts in `.env`:
 ```bash
 ALERT_EMAIL=admin@example.com
-SMTP_FROM=noreply@handmadeharmony.com
+SMTP_FROM=noreply@yourdomain.com
 ```
 
 ### Alert Types
@@ -182,7 +182,7 @@ SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USER=your_username
 SMTP_PASS=your_password
-SMTP_FROM=noreply@handmadeharmony.com
+SMTP_FROM=noreply@yourdomain.com
 ```
 
 ### Testing Alerts

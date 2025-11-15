@@ -30,7 +30,7 @@ fi
 DISK_WARN_PCT="${DISK_WARN_PCT:-80}"
 DISK_CRITICAL_PCT="${DISK_CRITICAL_PCT:-90}"
 ALERT_EMAIL="${ALERT_EMAIL:-}"
-SMTP_FROM="${SMTP_FROM:-noreply@handmadeharmony.com}"
+SMTP_FROM="${SMTP_FROM:-noreply@yourdomain.com}"
 CLEANUP_TEMP="${CLEANUP_TEMP:-true}"
 
 send_alert() {

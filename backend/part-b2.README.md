@@ -75,8 +75,8 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
-SMTP_FROM_EMAIL=noreply@handmadeharmony.com
-SMTP_FROM_NAME=Handmade Harmony
+SMTP_FROM_EMAIL=noreply@yourdomain.com
+SMTP_FROM_NAME=Your Store Name
 
 # Or use sendmail (default)
 MAIL_DRIVER=sendmail

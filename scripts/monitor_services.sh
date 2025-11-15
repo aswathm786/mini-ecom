@@ -30,7 +30,7 @@ fi
 APP_URL="${APP_URL:-http://localhost:3000}"
 API_URL="${API_URL:-http://localhost:3000}"
 ALERT_EMAIL="${ALERT_EMAIL:-}"
-SMTP_FROM="${SMTP_FROM:-noreply@handmadeharmony.com}"
+SMTP_FROM="${SMTP_FROM:-noreply@yourdomain.com}"
 
 send_alert() {
     local subject="$1"
