@@ -63,10 +63,15 @@ export class AuthController {
       // Check if user already exists
       const existingUser = await usersCollection.findOne({ email: validated.email });
       if (existingUser) {
-        res.status(400).json({ error: 'User with this email already exists' });
-        return;
+          // To prevent user enumeration, return a generic success message.
+          // The user will not be created, but the potential attacker doesn't know.
+          res.status(201).json({ 
+              ok: true, 
+              message: 'Registration successful. Please check your email to verify your account.' 
+          });
+          return;
       }
-      
+            
       // Hash password using Argon2id
       const hashedPassword = await argon2.hash(validated.password, {
         type: argon2.argon2id,
