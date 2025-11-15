@@ -11,7 +11,12 @@ import { csrfProtection } from '../middleware/CSRF';
 
 const router = Router();
 
-// Checkout requires authentication and CSRF
+// Multi-step checkout endpoints (require authentication and CSRF)
+router.post('/checkout/create-order', requireAuth, csrfProtection, OrderController.createOrder);
+router.post('/checkout/create-razorpay-order', requireAuth, csrfProtection, OrderController.createRazorpayOrder);
+router.post('/checkout/confirm-razorpay', requireAuth, csrfProtection, OrderController.confirmPayment);
+
+// Legacy checkout endpoint (kept for backward compatibility)
 router.post('/checkout', requireAuth, csrfProtection, OrderController.checkout);
 
 // Order details - require auth (user can only see their own orders, admin can see all)

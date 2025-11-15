@@ -244,15 +244,42 @@ export class AdminController {
 
   /**
    * GET /api/admin/orders
-   * List orders with filters
+   * List orders with filters (date range, search query, status, userId)
    */
   static async listOrders(req: Request, res: Response): Promise<void> {
     try {
       const pagination = parsePagination(req.query);
       
+      // Parse date range
+      let dateFrom: Date | undefined;
+      let dateTo: Date | undefined;
+      
+      if (req.query.dateFrom) {
+        dateFrom = new Date(req.query.dateFrom as string);
+        if (isNaN(dateFrom.getTime())) {
+          return res.status(400).json({
+            ok: false,
+            error: 'Invalid dateFrom format. Use ISO 8601 format (YYYY-MM-DD)',
+          });
+        }
+      }
+      
+      if (req.query.dateTo) {
+        dateTo = new Date(req.query.dateTo as string);
+        if (isNaN(dateTo.getTime())) {
+          return res.status(400).json({
+            ok: false,
+            error: 'Invalid dateTo format. Use ISO 8601 format (YYYY-MM-DD)',
+          });
+        }
+      }
+      
       const filters = {
         userId: req.query.userId as string | undefined,
         status: req.query.status as string | undefined,
+        dateFrom,
+        dateTo,
+        searchQuery: req.query.search as string | undefined,
         ...pagination,
       };
       

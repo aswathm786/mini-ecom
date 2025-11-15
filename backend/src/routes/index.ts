@@ -175,5 +175,44 @@ router.get('/shipments/:awb/track', async (req, res) => {
   }
 });
 
+// Shipping rate calculation (public, no auth required)
+router.get('/shipping/rates', async (req, res) => {
+  try {
+    const toPincode = req.query.to_pincode as string;
+    const weight = parseFloat(req.query.weight as string) || 1; // Default 1kg
+    const fromPincode = Config.get('SHIPPING_FROM_PINCODE', '110001'); // Default from pincode (can be configured)
+    
+    if (!toPincode || toPincode.length !== 6) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Invalid pincode. Please provide a valid 6-digit pincode.',
+      });
+    }
+    
+    // Get shipping rates from Delhivery
+    const rates = await delhiveryService.getRates(fromPincode, toPincode, weight);
+    
+    // Format response
+    const formattedRates = rates.map(rate => ({
+      service: rate.courier_company_id?.toString() || 'standard',
+      name: rate.courier_name || 'Standard Shipping',
+      charge: rate.charge || rate.charge_before_tax || 0,
+      estimatedDays: parseInt(rate.etd?.replace(/\D/g, '') || '5', 10) || 5,
+      recommended: rate.recommended || false,
+    }));
+    
+    res.json({
+      ok: true,
+      data: formattedRates,
+    });
+  } catch (error) {
+    console.error('Error calculating shipping rates:', error);
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Failed to calculate shipping rates',
+    });
+  }
+});
+
 export default router;
 
