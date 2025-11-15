@@ -21,6 +21,7 @@ import orderRoutes from './orders';
 import adminRoutes from './admin';
 import { SupportTicketController } from '../controllers/SupportTicketController';
 import { AIController } from '../controllers/AIController';
+import { UserController } from '../controllers/UserController';
 
 const router = Router();
 
@@ -31,28 +32,35 @@ router.get('/health', HealthController.health);
 router.get('/csrf-token', csrfTokenHandler);
 
 // Serve uploaded files
-const uploadsPath = Config.get('UPLOAD_DIR', './uploads');
+const uploadsPath = path.resolve(Config.get('UPLOAD_DIR', './uploads'));
 router.get('/uploads/:filename', (req, res) => {
   const filename = req.params.filename;
-  const filePath = path.join(uploadsPath, filename);
   
-  // Security: prevent directory traversal
-  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+  // Security: prevent directory traversal by resolving path and checking it's within uploads directory
+  const requestedPath = path.resolve(path.join(uploadsPath, filename));
+  
+  // Ensure the resolved path is still within the uploads directory
+  if (!requestedPath.startsWith(uploadsPath)) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
   
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(requestedPath)) {
     return res.status(404).json({ error: 'File not found' });
   }
   
+  // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.sendFile(path.resolve(filePath));
+  res.sendFile(requestedPath);
 });
 
 // Authentication routes (rate limited, CSRF protected)
 router.post('/auth/register', authRateLimiter, csrfProtection, AuthController.register);
 router.post('/auth/login', authRateLimiter, csrfProtection, AuthController.login);
 router.post('/auth/logout', requireAuth, csrfProtection, AuthController.logout);
+router.post('/auth/forgot-password', authRateLimiter, csrfProtection, AuthController.forgotPassword);
+router.post('/auth/reset-password', authRateLimiter, csrfProtection, AuthController.resetPassword);
+router.post('/auth/send-verification', requireAuth, csrfProtection, AuthController.sendVerificationEmail);
+router.get('/auth/verify-email', AuthController.verifyEmail);
 
 // Protected user route (example)
 router.get('/me', requireAuth, (req, res) => {
@@ -66,6 +74,10 @@ router.get('/me', requireAuth, (req, res) => {
     },
   });
 });
+
+// User email preferences
+router.get('/user/email-preferences', requireAuth, UserController.getEmailPreferences);
+router.put('/user/email-preferences', requireAuth, csrfProtection, UserController.updateEmailPreferences);
 
 // Catalog routes (public)
 router.use(catalogRoutes);

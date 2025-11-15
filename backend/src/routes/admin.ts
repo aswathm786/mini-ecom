@@ -10,6 +10,7 @@ import { AdminRefundController } from '../controllers/AdminRefundController';
 import { AdminInvoiceController } from '../controllers/AdminInvoiceController';
 import { SupportTicketController } from '../controllers/SupportTicketController';
 import { ThemeSettingsController } from '../controllers/ThemeSettingsController';
+import { AdminEmailController } from '../controllers/AdminEmailController';
 import { requireAuth } from '../middleware/Auth';
 import { requireAdmin } from '../middleware/RequireRole';
 import { csrfProtection } from '../middleware/CSRF';
@@ -30,6 +31,11 @@ router.use(csrfProtection);
 router.post('/admin/products', uploadMultiple.array('images', 5), AdminController.createProduct);
 router.put('/admin/products/:id', uploadMultiple.array('images', 5), AdminController.updateProduct);
 router.delete('/admin/products/:id', AdminController.deleteProduct);
+
+// Categories CRUD
+router.post('/admin/categories', AdminController.createCategory);
+router.put('/admin/categories/:id', AdminController.updateCategory);
+router.delete('/admin/categories/:id', AdminController.deleteCategory);
 
 // Orders
 router.get('/admin/orders', AdminController.listOrders);
@@ -115,7 +121,12 @@ router.get('/admin/shipments/:awb/label', async (req, res) => {
   }
 });
 
-// User sessions (placeholder)
+// User management
+router.get('/admin/users', AdminController.listUsers);
+router.get('/admin/users/:id', AdminController.getUser);
+router.put('/admin/users/:id/block', AdminController.blockUser);
+router.post('/admin/users/:id/reset-password', AdminController.resetUserPassword);
+router.put('/admin/users/:id/roles', AdminController.editUserRoles);
 router.get('/admin/users/:id/sessions', AdminController.getUserSessions);
 router.post('/admin/users/:id/revoke-session', AdminController.revokeSession);
 
@@ -130,6 +141,48 @@ router.get('/admin/theme-settings', ThemeSettingsController.getThemeSettings);
 router.put('/admin/theme-settings', ThemeSettingsController.updateThemeSettings);
 router.post('/admin/theme-settings/upload-logo', uploadMultiple.single('logo'), ThemeSettingsController.uploadLogo);
 router.post('/admin/theme-settings/upload-image', uploadMultiple.single('image'), ThemeSettingsController.uploadImage);
+
+// Email Templates
+router.get('/admin/email-templates', AdminEmailController.listTemplates);
+router.get('/admin/email-templates/:id', AdminEmailController.getTemplate);
+router.put('/admin/email-templates/:id', AdminEmailController.updateTemplate);
+router.post('/admin/email-templates/:id/preview', AdminEmailController.previewTemplate);
+router.post('/admin/email-broadcast', AdminEmailController.broadcast);
+
+// Review Management (Admin)
+router.put('/admin/reviews/:id/status', async (req, res) => {
+  try {
+    const reviewId = req.params.id;
+    const { status } = req.body;
+    
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Invalid status. Must be pending, approved, or rejected',
+      });
+    }
+    
+    const success = await reviewService.updateReviewStatus(reviewId, status);
+    
+    if (!success) {
+      return res.status(404).json({
+        ok: false,
+        error: 'Review not found',
+      });
+    }
+    
+    res.json({
+      ok: true,
+      message: 'Review status updated',
+    });
+  } catch (error) {
+    console.error('Error updating review status:', error);
+    res.status(500).json({
+      ok: false,
+      error: 'Failed to update review status',
+    });
+  }
+});
 
 export default router;
 

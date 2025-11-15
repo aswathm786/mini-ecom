@@ -9,6 +9,8 @@ import { mongo } from '../db/Mongo';
 import { inventoryService } from './InventoryService';
 import { cartService, Cart } from './CartService';
 import { productService } from './ProductService';
+import { emailTriggerService } from './EmailTriggerService';
+import { EmailEventType } from '../models/EmailTemplate';
 
 export interface OrderItem {
   productId: string;
@@ -68,9 +70,12 @@ class OrderService {
     billingAddress: Address,
     paymentMethod: string
   ): Promise<{ order: Order; payment: Payment; errors?: string[] }> {
+    const client = mongo.getClient();
     const db = mongo.getDb();
     const ordersCollection = db.collection<Order>('orders');
     const paymentsCollection = db.collection<Payment>('payments');
+    const inventoryCollection = db.collection('inventory');
+    const cartsCollection = db.collection('carts');
     
     // Validate cart
     const validation = await cartService.validateCart(cart);
@@ -101,72 +106,127 @@ class OrderService {
       0
     );
     
-    // Reserve inventory for all items (atomic operations)
-    const reserveResults = await Promise.all(
-      cart.items.map(item =>
-        inventoryService.reserveInventory(item.productId, item.qty)
-      )
-    );
+    // Use MongoDB transaction for atomicity
+    const session = client.startSession();
     
-    // Check if all reservations succeeded
-    const failedReservations = reserveResults
-      .map((result, index) => ({ result, item: cart.items[index] }))
-      .filter(({ result }) => !result.success);
-    
-    if (failedReservations.length > 0) {
-      // Restore any successful reservations
-      for (let i = 0; i < reserveResults.length; i++) {
-        if (reserveResults[i].success) {
-          await inventoryService.restoreInventory(
-            cart.items[i].productId,
-            cart.items[i].qty
+    try {
+      const result = await session.withTransaction(async () => {
+        // Reserve inventory for all items within transaction
+        const inventoryReservations: Array<{ productId: string; qty: number; success: boolean }> = [];
+        
+        for (const item of cart.items) {
+          const productObjId = new ObjectId(item.productId);
+          
+          // Atomic update: decrement quantity only if sufficient stock available
+          const inventoryResult = await inventoryCollection.findOneAndUpdate(
+            {
+              productId: productObjId,
+              qty: { $gte: item.qty }, // Only update if qty >= requested
+            },
+            {
+              $inc: { qty: -item.qty },
+              $set: { updatedAt: new Date() },
+            },
+            {
+              returnDocument: 'after',
+              session,
+            }
           );
+          
+          if (!inventoryResult.value) {
+            // Check current stock
+            const current = await inventoryCollection.findOne(
+              { productId: productObjId },
+              { session }
+            );
+            throw new Error(
+              `Insufficient inventory for product ${item.productId}. Available: ${current?.qty || 0}, Requested: ${item.qty}`
+            );
+          }
+          
+          inventoryReservations.push({
+            productId: item.productId,
+            qty: item.qty,
+            success: true,
+          });
         }
+        
+        // Create order within transaction
+        const order: Order = {
+          userId,
+          items: orderItems,
+          amount,
+          currency: 'INR',
+          status: 'pending',
+          shippingAddress,
+          billingAddress,
+          placedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        const orderResult = await ordersCollection.insertOne(order, { session });
+        order._id = orderResult.insertedId.toString();
+        
+        // Create payment record within transaction
+        const payment: Payment = {
+          orderId: order._id!,
+          amount,
+          currency: 'INR',
+          gateway: paymentMethod === 'razorpay' ? 'razorpay' : paymentMethod === 'cod' ? 'cod' : 'other',
+          status: 'pending',
+          meta: {
+            paymentMethod,
+          },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        const paymentResult = await paymentsCollection.insertOne(payment, { session });
+        payment._id = paymentResult.insertedId.toString();
+        
+        // Clear cart within transaction
+        if (userId) {
+          await cartsCollection.deleteOne({ userId }, { session });
+        } else if (cart.sessionId) {
+          await cartsCollection.deleteOne({ sessionId: cart.sessionId }, { session });
+        }
+        
+        return { order, payment };
+      });
+      
+      // Transaction committed successfully
+      const { order, payment } = result!;
+      
+      // Send order confirmation email (async, don't wait)
+      // Get user email for sending email
+      const usersCollection = db.collection('users');
+      const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+      if (user && user.email) {
+        emailTriggerService.sendTemplateEmail(
+          EmailEventType.ORDER_PLACED,
+          user.email,
+          {
+            userName: user.firstName || user.email,
+            orderId: order._id,
+            orderDate: order.placedAt.toLocaleDateString(),
+            orderAmount: `₹${order.amount.toFixed(2)}`,
+            items: order.items.map(item => `${item.name} x${item.qty}`).join(', '),
+            shippingAddress: `${order.shippingAddress.street}, ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.pincode}`,
+          }
+        ).catch(err => {
+          console.error('Failed to send order confirmation email:', err);
+        });
       }
       
-      throw new Error(
-        `Insufficient inventory for: ${failedReservations.map(f => f.item.productId).join(', ')}`
-      );
+      return { order, payment };
+    } catch (error) {
+      // Transaction will be aborted automatically
+      console.error('Error creating order (transaction aborted):', error);
+      throw error;
+    } finally {
+      await session.endSession();
     }
-    
-    // Create order
-    const order: Order = {
-      userId,
-      items: orderItems,
-      amount,
-      currency: 'INR',
-      status: 'pending',
-      shippingAddress,
-      billingAddress,
-      placedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    const orderResult = await ordersCollection.insertOne(order);
-    order._id = orderResult.insertedId.toString();
-    
-    // Create payment record
-    const payment: Payment = {
-      orderId: order._id!,
-      amount,
-      currency: 'INR',
-      gateway: paymentMethod === 'razorpay' ? 'razorpay' : paymentMethod === 'cod' ? 'cod' : 'other',
-      status: 'pending',
-      meta: {
-        paymentMethod,
-      },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    const paymentResult = await paymentsCollection.insertOne(payment);
-    payment._id = paymentResult.insertedId.toString();
-    
-    // Clear cart after successful order
-    await cartService.clearCart(userId, cart.sessionId);
-    
-    return { order, payment };
   }
 
   /**
@@ -235,9 +295,16 @@ class OrderService {
   async updateOrderStatus(orderId: string, status: Order['status']): Promise<boolean> {
     const db = mongo.getDb();
     const ordersCollection = db.collection<Order>('orders');
+    const usersCollection = db.collection('users');
     
     try {
       const orderObjId = new ObjectId(orderId);
+      const order = await ordersCollection.findOne({ _id: orderObjId });
+      
+      if (!order) {
+        return false;
+      }
+      
       await ordersCollection.updateOne(
         { _id: orderObjId },
         {
@@ -247,6 +314,44 @@ class OrderService {
           },
         }
       );
+      
+      // Send status change email (async, don't wait)
+      const user = await usersCollection.findOne({ _id: new ObjectId(order.userId) });
+      if (user && user.email) {
+        let eventType: EmailEventType | null = null;
+        
+        // Map status to email event type
+        switch (status) {
+          case 'paid':
+            eventType = EmailEventType.ORDER_PAID;
+            break;
+          case 'shipped':
+            eventType = EmailEventType.ORDER_SHIPPED;
+            break;
+          case 'delivered':
+            eventType = EmailEventType.ORDER_DELIVERED;
+            break;
+          case 'cancelled':
+            eventType = EmailEventType.ORDER_CANCELLED;
+            break;
+        }
+        
+        if (eventType) {
+          emailTriggerService.sendTemplateEmail(
+            eventType,
+            user.email,
+            {
+              userName: user.firstName || user.email,
+              orderId: order._id,
+              orderDate: order.placedAt.toLocaleDateString(),
+              orderAmount: `₹${order.amount.toFixed(2)}`,
+              status: status,
+            }
+          ).catch(err => {
+            console.error(`Failed to send ${status} email:`, err);
+          });
+        }
+      }
       
       return true;
     } catch (error) {

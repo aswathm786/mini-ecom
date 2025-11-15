@@ -5,9 +5,26 @@
  */
 
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { mongo } from '../db/Mongo';
 import { ObjectId } from 'mongodb';
 import { parsePagination, getPaginationMeta } from '../helpers/pagination';
+import { sanitizePlainText, sanitizeHtmlContent } from '../helpers/sanitize';
+
+// Validation schemas
+const createTicketSchema = z.object({
+  subject: z.string().min(1, 'Subject is required').max(200, 'Subject is too long'),
+  message: z.string().min(1, 'Message is required').max(5000, 'Message is too long'),
+  priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
+});
+
+const replyTicketSchema = z.object({
+  message: z.string().min(1, 'Message is required').max(5000, 'Message is too long'),
+});
+
+const updateStatusSchema = z.object({
+  status: z.enum(['open', 'pending', 'resolved', 'closed']),
+});
 
 export class SupportTicketController {
   /**
@@ -160,19 +177,21 @@ export class SupportTicketController {
         return;
       }
       
+      // Validate input
+      const validated = createTicketSchema.parse(req.body);
+      
       const db = mongo.getDb();
       const ticketsCollection = db.collection('support_tickets');
       
-      const { subject, message, priority = 'medium' } = req.body;
+      const { subject, message, priority } = validated;
       
-      if (!subject || !message) {
-        res.status(400).json({ ok: false, error: 'Subject and message are required' });
-        return;
-      }
+      // Sanitize user input to prevent XSS
+      const sanitizedSubject = sanitizePlainText(subject);
+      const sanitizedMessage = sanitizeHtmlContent(message);
       
       const ticket = {
         userId: req.userId,
-        subject,
+        subject: sanitizedSubject,
         status: 'open',
         priority,
         createdAt: new Date(),
@@ -187,7 +206,7 @@ export class SupportTicketController {
       await repliesCollection.insertOne({
         ticketId,
         userId: req.userId,
-        message,
+        message: sanitizedMessage,
         isAdmin: false,
         createdAt: new Date(),
       });
@@ -211,18 +230,19 @@ export class SupportTicketController {
    */
   static async replyToTicket(req: Request, res: Response): Promise<void> {
     try {
+      // Validate input
+      const validated = replyTicketSchema.parse(req.body);
+      
       const db = mongo.getDb();
       const ticketsCollection = db.collection('support_tickets');
       const repliesCollection = db.collection('support_ticket_replies');
       
       const ticketId = req.params.id;
-      const { message } = req.body;
+      const { message } = validated;
       const isAdmin = (req.user as any)?.role === 'admin';
       
-      if (!message) {
-        res.status(400).json({ ok: false, error: 'Message is required' });
-        return;
-      }
+      // Sanitize user input to prevent XSS
+      const sanitizedMessage = sanitizeHtmlContent(message);
       
       // Check ticket exists
       const ticket = await ticketsCollection.findOne({ _id: new ObjectId(ticketId) });
@@ -241,7 +261,7 @@ export class SupportTicketController {
       await repliesCollection.insertOne({
         ticketId,
         userId: req.userId,
-        message,
+        message: sanitizedMessage,
         isAdmin,
         createdAt: new Date(),
       });
@@ -278,17 +298,14 @@ export class SupportTicketController {
    */
   static async updateStatus(req: Request, res: Response): Promise<void> {
     try {
+      // Validate input
+      const validated = updateStatusSchema.parse(req.body);
+      
       const db = mongo.getDb();
       const ticketsCollection = db.collection('support_tickets');
       
       const ticketId = req.params.id;
-      const { status } = req.body;
-      
-      const validStatuses = ['open', 'pending', 'resolved', 'closed'];
-      if (!validStatuses.includes(status)) {
-        res.status(400).json({ ok: false, error: 'Invalid status' });
-        return;
-      }
+      const { status } = validated;
       
       const result = await ticketsCollection.updateOne(
         { _id: new ObjectId(ticketId) },

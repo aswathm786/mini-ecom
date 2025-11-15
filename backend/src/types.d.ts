@@ -10,6 +10,17 @@ export interface User {
   lastName?: string;
   isEmailVerified: boolean;
   role?: string;
+  status?: 'active' | 'suspended' | 'deleted';
+  emailPreferences?: {
+    marketing?: boolean;
+    newsletter?: boolean;
+    transactional?: boolean;
+    [eventType: string]: boolean | undefined;
+  };
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +28,7 @@ export interface User {
 export interface Session {
   userId: string;
   token: string;
+  refreshToken?: string;
   deviceId?: string;
   ipAddress?: string;
   userAgent?: string;
@@ -24,6 +36,7 @@ export interface Session {
   csrfToken?: string;
   createdAt: Date;
   expiresAt: Date;
+  refreshExpiresAt?: Date;
 }
 
 export interface WebhookEvent {

@@ -7,6 +7,7 @@
 import { Db, ObjectId } from 'mongodb';
 import { mongo } from '../db/Mongo';
 import { generateSlug, sanitizeString } from '../helpers/validate';
+import { sanitizePlainText, sanitizeHtmlContent } from '../helpers/sanitize';
 import { getFileUrl } from '../middleware/Upload';
 
 export interface ProductImage {
@@ -25,6 +26,9 @@ export interface Product {
   status: 'active' | 'inactive' | 'draft';
   categoryId?: string;
   images: ProductImage[];
+  metaTitle?: string;
+  metaDescription?: string;
+  metaKeywords?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +45,9 @@ class ProductService {
     categoryId?: string;
     status?: 'active' | 'inactive' | 'draft';
     images?: Express.Multer.File[];
+    metaTitle?: string;
+    metaDescription?: string;
+    metaKeywords?: string;
   }): Promise<Product> {
     const db = mongo.getDb();
     const productsCollection = db.collection<Product>('products');
@@ -61,14 +68,17 @@ class ProductService {
     }));
     
     const product: Product = {
-      name: sanitizeString(data.name),
+      name: sanitizePlainText(data.name),
       slug,
-      description: sanitizeString(data.description),
+      description: sanitizeHtmlContent(data.description),
       price: data.price,
       sku: data.sku || undefined,
       status: data.status || 'active',
       categoryId: data.categoryId ? new ObjectId(data.categoryId).toString() : undefined,
       images,
+      metaTitle: data.metaTitle ? sanitizePlainText(data.metaTitle) : undefined,
+      metaDescription: data.metaDescription ? sanitizePlainText(data.metaDescription) : undefined,
+      metaKeywords: data.metaKeywords ? sanitizePlainText(data.metaKeywords) : undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -93,6 +103,9 @@ class ProductService {
       status?: 'active' | 'inactive' | 'draft';
       images?: Express.Multer.File[];
       removeImages?: string[]; // Filenames to remove
+      metaTitle?: string;
+      metaDescription?: string;
+      metaKeywords?: string;
     }
   ): Promise<Product | null> {
     const db = mongo.getDb();
@@ -111,11 +124,11 @@ class ProductService {
       };
       
       if (data.name !== undefined) {
-        update.name = sanitizeString(data.name);
+        update.name = sanitizePlainText(data.name);
         update.slug = generateSlug(data.name);
       }
       if (data.description !== undefined) {
-        update.description = sanitizeString(data.description);
+        update.description = sanitizeHtmlContent(data.description);
       }
       if (data.price !== undefined) {
         update.price = data.price;
@@ -128,6 +141,15 @@ class ProductService {
       }
       if (data.status !== undefined) {
         update.status = data.status;
+      }
+      if (data.metaTitle !== undefined) {
+        update.metaTitle = data.metaTitle ? sanitizePlainText(data.metaTitle) : undefined;
+      }
+      if (data.metaDescription !== undefined) {
+        update.metaDescription = data.metaDescription ? sanitizePlainText(data.metaDescription) : undefined;
+      }
+      if (data.metaKeywords !== undefined) {
+        update.metaKeywords = data.metaKeywords ? sanitizePlainText(data.metaKeywords) : undefined;
       }
       
       // Handle images

@@ -197,13 +197,18 @@ export async function createSession(
   email: string, 
   expiresIn: string = Config.JWT_EXPIRES_IN,
   req?: Request
-): Promise<{ token: string; sessionId: string }> {
+): Promise<{ token: string; sessionId: string; refreshToken: string }> {
   const sessionId = crypto.randomBytes(32).toString('hex');
+  const refreshToken = crypto.randomBytes(32).toString('hex');
   
   // Calculate expiration
   const expiresAt = new Date();
   const expiresInMs = parseExpiresIn(expiresIn);
   expiresAt.setTime(expiresAt.getTime() + expiresInMs);
+  
+  // Refresh token expires in 30 days (longer than access token)
+  const refreshExpiresAt = new Date();
+  refreshExpiresAt.setTime(refreshExpiresAt.getTime() + (30 * 24 * 60 * 60 * 1000));
   
   // Store session in database
   const db = mongo.getDb();
@@ -215,12 +220,14 @@ export async function createSession(
   const session: Session = {
     userId,
     token: sessionId,
+    refreshToken,
     deviceId: req?.get('user-agent') ? crypto.createHash('sha256').update(req.get('user-agent') || '').digest('hex').substring(0, 16) : undefined,
     ipAddress: req?.ip || req?.socket.remoteAddress,
     userAgent: req?.get('user-agent'),
     fingerprint,
     createdAt: new Date(),
     expiresAt,
+    refreshExpiresAt,
   };
   
   await sessionsCollection.insertOne(session);
@@ -236,7 +243,7 @@ export async function createSession(
     expiresIn,
   });
   
-  return { token, sessionId };
+  return { token, sessionId, refreshToken };
 }
 
 /**
