@@ -207,33 +207,58 @@ class InvoiceService {
   }
 
   /**
-   * Generate PDF from HTML using Node (puppeteer or pdf-lib)
-   * For now, returns HTML as placeholder - user can install puppeteer for actual PDF
+   * Generate PDF from HTML using puppeteer
    */
   private async generatePDFFromHTML(html: string, outputPath: string): Promise<boolean> {
     try {
-      // Option 1: Use puppeteer (if installed)
-      // const puppeteer = require('puppeteer');
-      // const browser = await puppeteer.launch();
-      // const page = await browser.newPage();
-      // await page.setContent(html);
-      // await page.pdf({ path: outputPath, format: 'A4' });
-      // await browser.close();
+      // Try to use puppeteer if available
+      let puppeteer;
+      try {
+        puppeteer = require('puppeteer');
+      } catch (err) {
+        // Puppeteer not installed - save HTML as fallback
+        console.warn('Puppeteer not installed. Saving HTML instead. Install: npm install puppeteer');
+        saveFile(path.basename(outputPath).replace('.pdf', '.html'), html, 'invoices');
+        return false;
+      }
       
-      // Option 2: Use pdf-lib (if installed)
-      // For now, save HTML as placeholder
-      // User can install puppeteer: npm install puppeteer
+      // Launch browser
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for Docker
+      });
       
-      // Placeholder: Save HTML for now
-      // In production, install puppeteer and uncomment above
-      saveFile(path.basename(outputPath).replace('.pdf', '.html'), html, 'invoices');
-      
-      // For now, return false to indicate PDF not generated
-      // User should install puppeteer for actual PDF generation
-      console.warn('PDF generation requires puppeteer. Install: npm install puppeteer');
-      return false;
+      try {
+        const page = await browser.newPage();
+        
+        // Set content and wait for any resources to load
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        
+        // Generate PDF
+        await page.pdf({
+          path: outputPath,
+          format: 'A4',
+          printBackground: true,
+          margin: {
+            top: '20mm',
+            right: '15mm',
+            bottom: '20mm',
+            left: '15mm',
+          },
+        });
+        
+        return true;
+      } finally {
+        await browser.close();
+      }
     } catch (error) {
       console.error('Error generating PDF:', error);
+      // Fallback: save HTML file
+      try {
+        saveFile(path.basename(outputPath).replace('.pdf', '.html'), html, 'invoices');
+      } catch (fallbackError) {
+        console.error('Error saving HTML fallback:', fallbackError);
+      }
       return false;
     }
   }

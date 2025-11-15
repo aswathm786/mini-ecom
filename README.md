@@ -154,6 +154,7 @@ node backend/migrations/run.js
 - **Admin Panel**: http://localhost/admin
   - Email: (value from `ADMIN_EMAIL` in `.env`)
   - Password: (value from `ADMIN_PASSWORD` in `.env`)
+  - **Note**: The admin link is not displayed in the public navigation for security. Access the admin panel directly via the URL `/admin`. See [Admin Access Guide](docs/admin_access.md) for details.
 
 **That's it!** Your e-commerce platform is now running.
 
@@ -247,20 +248,15 @@ See [Configuration](#configuration) section for full details.
 
 **Development mode (with live reload):**
 ```bash
-# Set in .env: USE_BIND_MOUNTS=1
-docker compose -f docker-compose.dev.yml up -d
+# Automatically uses docker-compose.override.yml for development
+docker compose up -d
 ```
 
 **Production mode:**
 ```bash
-# Set in .env: USE_BIND_MOUNTS=0
-docker compose -f docker-compose.prod.yml build --no-cache
-docker compose -f docker-compose.prod.yml up -d
-```
-
-**Standard mode (uses main docker-compose.yml):**
-```bash
-docker compose up -d
+# Build and start production services
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 #### Step 4: Run Migrations and Seed Data
@@ -377,7 +373,7 @@ All configuration is done through the `.env` file. Copy `.env.example` to `.env`
 # MongoDB
 MONGO_URI=mongodb://admin:changeme@mongo:27017/miniecom?authSource=admin
 # For native install, use:
-# MONGODB_URI=mongodb://localhost:27017/miniecom
+# MONGO_URI=mongodb://localhost:27017/miniecom
 
 # Security Secrets (generate random strings)
 JWT_SECRET=your_jwt_secret_here
@@ -418,6 +414,19 @@ DELHIVERY_CLIENT_ID=YOUR_DELHIVERY_CLIENT_ID
 3. Copy token and client ID to `.env`
 
 See [docs/shipping_setup.md](docs/shipping_setup.md) for detailed setup.
+
+#### AI Assistant (Google Gemini)
+
+```bash
+# Get your API key from: https://makersuite.google.com/app/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+**How to get Gemini API key:**
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the API key to `.env`
 
 #### Email (SMTP)
 
@@ -482,7 +491,7 @@ openssl rand -base64 32
 
 **With Docker:**
 ```bash
-# Set USE_BIND_MOUNTS=1 in .env
+# Development mode (automatically uses docker-compose.override.yml)
 docker compose -f docker-compose.dev.yml up -d
 
 # View logs
@@ -522,9 +531,9 @@ npm run dev  # Vite dev server with HMR
 
 **With Docker:**
 ```bash
-# Set USE_BIND_MOUNTS=0 in .env
-docker compose -f docker-compose.prod.yml build --no-cache
-docker compose -f docker-compose.prod.yml up -d
+# Production mode
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # View logs
 docker compose logs -f
@@ -926,6 +935,21 @@ mongosh mongodb://localhost:27017/miniecom
 
 For detailed admin task guides, see [docs/admin_quickguide.md](docs/admin_quickguide.md).
 
+### Admin Access
+
+**Important**: The admin panel link is **not displayed in the public navigation menu** for security reasons. To access the admin panel:
+
+1. **Direct URL**: Navigate to `http://your-domain.com/admin` (or `http://localhost/admin` in development)
+2. **Login Required**: You must be logged in with an admin account
+3. **Admin Role Required**: Your account must have the `admin`, `root`, or `manager` role
+
+**Security Features**:
+- Session fingerprinting to prevent session hijacking
+- Configurable session expiration (set in Admin > Settings > Authentication Settings)
+- Secure cookie configuration (HttpOnly, Secure, SameSite)
+
+For complete details on admin access, security features, and troubleshooting, see [Admin Access Guide](docs/admin_access.md).
+
 ### Quick Admin Tasks
 
 1. **Create Product:**
@@ -1002,7 +1026,7 @@ npm run dev  # Vite dev server with HMR
 
 **Or use Docker with bind mounts:**
 ```bash
-# Set USE_BIND_MOUNTS=1 in .env
+# Development mode (automatically uses docker-compose.override.yml)
 docker compose -f docker-compose.dev.yml up -d
 ```
 

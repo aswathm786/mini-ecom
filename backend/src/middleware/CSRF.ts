@@ -2,7 +2,7 @@
  * CSRF Protection Middleware
  * 
  * Implements CSRF token generation and verification.
- * Uses session-backed tokens stored in-memory (placeholder for future DB-backed sessions).
+ * Uses MongoDB sessions collection to store CSRF tokens.
  * 
  * For SPA compatibility:
  * - GET /api/csrf-token returns a token
@@ -13,10 +13,8 @@
 import { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
 import { Config } from '../config/Config';
-
-// In-memory token storage (placeholder - will move to DB sessions collection later)
-// Map<sessionId, token>
-const csrfTokens = new Map<string, string>();
+import { mongo } from '../db/Mongo';
+import { Session } from '../types';
 
 /**
  * Generate a random CSRF token
@@ -26,31 +24,53 @@ function generateToken(): string {
 }
 
 /**
- * Get or create a session ID from request
- * Uses a combination of IP and User-Agent hash as session identifier
- * (Placeholder - will use actual session ID from sessions collection later)
+ * Get session ID from request
+ * Uses the sessionId from the authenticated session (if available) or creates a temporary one
  */
-function getSessionId(req: Request): string {
-  // For now, use a hash of IP + User-Agent as session identifier
-  // This is a placeholder until we implement proper session management
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  const ua = req.get('user-agent') || 'unknown';
-  const sessionKey = `${ip}:${ua}`;
-  return crypto.createHash('sha256').update(sessionKey).digest('hex');
+function getSessionId(req: Request): string | null {
+  // If user is authenticated, use their session ID
+  if (req.sessionId) {
+    return req.sessionId;
+  }
+  
+  // For unauthenticated requests, we can't reliably track sessions
+  // This should only be used for public endpoints that don't require auth
+  // For authenticated endpoints, req.sessionId should always be available
+  return null;
 }
 
 /**
  * CSRF token generation endpoint middleware
  * Returns token in both cookie and JSON response
  */
-export function csrfTokenHandler(req: Request, res: Response): void {
+export async function csrfTokenHandler(req: Request, res: Response): Promise<void> {
   const sessionId = getSessionId(req);
+  
+  if (!sessionId) {
+    // For unauthenticated requests, we can still generate a token but it won't be persisted
+    // This is acceptable for public endpoints
+    const token = generateToken();
+    res.cookie('csrf-token', token, {
+      httpOnly: true,
+      secure: Config.COOKIE_SECURE,
+      sameSite: Config.COOKIE_SAME_SITE,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
+    res.json({ token });
+    return;
+  }
   
   // Generate new token
   const token = generateToken();
   
-  // Store token (in-memory placeholder)
-  csrfTokens.set(sessionId, token);
+  // Store token in session document
+  const db = mongo.getDb();
+  const sessionsCollection = db.collection<Session>('sessions');
+  
+  await sessionsCollection.updateOne(
+    { token: sessionId },
+    { $set: { csrfToken: token } }
+  );
   
   // Set token in HttpOnly cookie
   res.cookie('csrf-token', token, {
@@ -68,25 +88,38 @@ export function csrfTokenHandler(req: Request, res: Response): void {
  * CSRF verification middleware
  * Verifies X-CSRF-Token header matches the token stored for this session
  */
-export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
+export async function csrfProtection(req: Request, res: Response, next: NextFunction): Promise<void> {
   // Skip CSRF for GET, HEAD, OPTIONS requests
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
   }
   
   const sessionId = getSessionId(req);
-  const storedToken = csrfTokens.get(sessionId);
   const providedToken = req.headers['x-csrf-token'] as string;
   
-  // Check if token exists for this session
-  if (!storedToken) {
+  if (!sessionId) {
+    // For unauthenticated requests, we can't verify CSRF tokens reliably
+    // This should only happen for public endpoints
+    // For authenticated endpoints, sessionId should always be available
+    return res.status(403).json({
+      error: 'CSRF token verification requires authentication',
+    });
+  }
+  
+  // Get stored token from session document
+  const db = mongo.getDb();
+  const sessionsCollection = db.collection<Session & { csrfToken?: string }>('sessions');
+  
+  const session = await sessionsCollection.findOne({ token: sessionId });
+  
+  if (!session || !session.csrfToken) {
     return res.status(403).json({
       error: 'CSRF token not found. Please request a new token from /api/csrf-token',
     });
   }
   
   // Verify token matches
-  if (!providedToken || providedToken !== storedToken) {
+  if (!providedToken || providedToken !== session.csrfToken) {
     return res.status(403).json({
       error: 'Invalid CSRF token',
     });
@@ -99,7 +132,12 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
 /**
  * Clear CSRF token for a session (e.g., on logout)
  */
-export function clearCsrfToken(sessionId: string): void {
-  csrfTokens.delete(sessionId);
+export async function clearCsrfToken(sessionId: string): Promise<void> {
+  const db = mongo.getDb();
+  const sessionsCollection = db.collection<Session & { csrfToken?: string }>('sessions');
+  await sessionsCollection.updateOne(
+    { token: sessionId },
+    { $unset: { csrfToken: '' } }
+  );
 }
 

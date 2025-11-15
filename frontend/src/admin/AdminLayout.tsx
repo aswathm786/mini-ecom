@@ -14,28 +14,41 @@ interface AdminLayoutProps {
 }
 
 export function AdminLayout({ children }: AdminLayoutProps) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   // Check if user has admin role
   const hasAdminAccess = () => {
     if (!user) return false;
     const roles = user.role ? [user.role] : [];
-    // TODO: Check user.roles array if available from API
-    return roles.some((r) => ['admin', 'manager', 'root'].includes(r.toLowerCase()));
+    // Check for admin, root, or manager roles
+    return roles.some((r) => ['admin', 'root', 'manager'].includes(r?.toLowerCase()));
   };
 
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect to login if not authenticated
   if (!isAuthenticated) {
     return <Navigate to="/login?return=/admin" replace />;
   }
 
+  // Redirect to account page if authenticated but not admin
   if (!hasAdminAccess()) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
-          <p className="text-gray-600">You don't have permission to access the admin area.</p>
-        </div>
-      </div>
+      <Navigate 
+        to="/account?error=admin_access_denied" 
+        replace 
+        state={{ message: 'You do not have permission to access the admin area.' }}
+      />
     );
   }
 

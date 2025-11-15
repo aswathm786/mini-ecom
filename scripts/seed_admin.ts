@@ -18,7 +18,7 @@ import * as argon2 from 'argon2';
 // Load environment variables
 require('dotenv').config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/handmade_harmony';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/handmade_harmony';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeThisPassword123!';
 
@@ -38,9 +38,9 @@ async function seedAdmin() {
 
   try {
     console.log('Connecting to MongoDB...');
-    console.log(`MongoDB URI: ${MONGODB_URI.replace(/\/\/.*@/, '//***:***@')}`); // Hide credentials in logs
+    console.log(`MongoDB URI: ${MONGO_URI.replace(/\/\/.*@/, '//***:***@')}`); // Hide credentials in logs
     
-    client = new MongoClient(MONGODB_URI);
+    client = new MongoClient(MONGO_URI);
     await client.connect();
     
     const db: Db = client.db();

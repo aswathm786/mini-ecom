@@ -158,12 +158,16 @@ export class AuthController {
         return;
       }
       
-      // Create session
-      const expiresIn = validated.rememberMe ? Config.REMEMBER_ME_EXPIRES_IN : Config.JWT_EXPIRES_IN;
-      const { token, sessionId } = createSession(
+      // Get session expiration from settings (configurable by admin)
+      // Default to REMEMBER_ME_EXPIRES_IN if rememberMe is checked, otherwise use configured session expiration
+      const sessionExpiresIn = Config.get('auth.session.expires_in', Config.JWT_EXPIRES_IN);
+      const expiresIn = validated.rememberMe ? Config.REMEMBER_ME_EXPIRES_IN : sessionExpiresIn;
+      
+      const { token, sessionId } = await createSession(
         user._id!.toString(),
         user.email,
-        expiresIn
+        expiresIn,
+        req
       );
       
       // Set session cookie
@@ -220,7 +224,7 @@ export class AuthController {
       
       if (sessionId) {
         // Destroy session
-        destroySession(sessionId);
+        await destroySession(sessionId);
         
         // Log logout
         await AuthController.logAudit({

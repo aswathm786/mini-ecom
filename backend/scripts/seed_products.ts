@@ -16,7 +16,7 @@ import * as path from 'path';
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/handmade_harmony';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/handmade_harmony';
 
 interface Category {
   name: string;
@@ -52,7 +52,7 @@ async function seedProducts() {
 
   try {
     console.log('Connecting to MongoDB...');
-    client = new MongoClient(MONGODB_URI);
+    client = new MongoClient(MONGO_URI);
     await client.connect();
     
     const db = client.db();

@@ -20,6 +20,8 @@ export interface Session {
   deviceId?: string;
   ipAddress?: string;
   userAgent?: string;
+  fingerprint?: string;
+  csrfToken?: string;
   createdAt: Date;
   expiresAt: Date;
 }

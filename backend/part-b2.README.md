@@ -136,37 +136,7 @@ db.settings.insertOne({
 
 ### Node PDF (Recommended)
 
-Install puppeteer for PDF generation:
-
-```bash
-npm install puppeteer
-```
-
-Then update `InvoiceService.ts` to uncomment puppeteer code.
-
-### PHP Dompdf (Optional)
-
-If you prefer PHP-based PDF generation:
-
-1. Install Dompdf in `app/Lib/dompdf/`
-2. Create `tools/dompdf_generate.php`:
-
-```php
-<?php
-require_once __DIR__ . '/../app/Lib/dompdf/autoload.inc.php';
-
-use Dompdf\Dompdf;
-
-$orderId = $argv[2] ?? null;
-if (!$orderId) {
-    die("Usage: php dompdf_generate.php --order=ORDER_ID\n");
-}
-
-// Fetch order from MongoDB (via Node API or direct connection)
-// Generate HTML
-// Generate PDF using Dompdf
-// Save to storage/invoices/
-```
+Puppeteer is included as a dependency in `package.json` and is required for PDF generation. The `InvoiceService` is fully configured to use Puppeteer for generating invoice PDFs.
 
 ## Email Configuration
 

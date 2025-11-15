@@ -191,11 +191,11 @@ Run tests:
 npm test
 ```
 
-Tests use Jest and React Testing Library. Example test in `test/csrfFetch.test.ts`.
+Tests use Vitest and React Testing Library. Example test in `test/csrfFetch.test.tsx`. Run tests with `npm test`.
 
 ## API Integration
 
-The frontend expects API endpoints at `/api/*`. In development, Vite proxies these to `http://localhost:5000` (configured in `vite.config.ts`).
+The frontend expects API endpoints at `/api/*`. In development, Vite proxies these to `http://localhost:3000` (configured in `vite.config.ts`). The proxy target is configurable via the `VITE_API_URL` environment variable.
 
 For production, ensure the API is accessible at the same origin or configure CORS appropriately.
 
@@ -204,7 +204,8 @@ For production, ensure the API is accessible at the same origin or configure COR
 Create `.env` for environment-specific config:
 
 ```env
-VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://localhost:3000
+# For Docker: VITE_API_URL=http://api:3000
 ```
 
 Access in code via `import.meta.env.VITE_API_URL`.

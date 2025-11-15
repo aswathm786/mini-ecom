@@ -8,9 +8,11 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { Logo } from '../components/Logo';
 import { Nav } from '../components/Nav';
 import { IconCart } from '../components/IconCart';
+import { AIChat } from '../components/AIChat';
 
 interface GlobalLayoutProps {
   children: ReactNode;
@@ -18,7 +20,11 @@ interface GlobalLayoutProps {
 
 export function GlobalLayout({ children }: GlobalLayoutProps) {
   const { user, isAuthenticated } = useAuth();
+  const { settings } = useTheme();
   const location = useLocation();
+  
+  const siteName = settings?.['theme.siteName'] || 'Handmade Harmony';
+  const siteTagline = settings?.['theme.siteTagline'] || 'Beautiful handmade products';
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -35,8 +41,24 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center" aria-label="Handmade Harmony Home">
-              <Logo />
+            <Link to="/" className="flex items-center gap-3" aria-label={`${siteName} Home`}>
+              {settings?.['theme.logo'] ? (
+                <img 
+                  src={settings['theme.logo']} 
+                  alt={siteName}
+                  className="h-10 w-auto object-contain"
+                />
+              ) : (
+                <Logo />
+              )}
+              <div className="hidden sm:block">
+                <div className="font-bold text-lg" style={{ color: 'var(--color-primary)' }}>
+                  {siteName}
+                </div>
+                {siteTagline && (
+                  <div className="text-xs text-gray-500">{siteTagline}</div>
+                )}
+              </div>
             </Link>
 
             {/* Desktop Navigation */}
@@ -45,21 +67,29 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
                 to="/"
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   location.pathname === '/'
-                    ? 'text-primary-600 bg-primary-50'
-                    : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                    ? 'bg-opacity-10'
+                    : 'hover:opacity-75 hover:bg-gray-50'
                 }`}
+                style={location.pathname === '/' ? {
+                  color: 'var(--color-primary, #dc2626)',
+                  backgroundColor: 'var(--color-primary, #dc2626)',
+                } : {
+                  color: 'var(--color-text, #374151)',
+                }}
               >
                 Home
               </Link>
               <Link
                 to="/#categories"
-                className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 transition-colors"
+                className="px-3 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-75 hover:bg-gray-50"
+                style={{ color: 'var(--color-text, #374151)' }}
               >
                 Categories
               </Link>
               <Link
                 to="/cart"
-                className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 transition-colors flex items-center gap-1"
+                className="px-3 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-75 hover:bg-gray-50 flex items-center gap-1"
+                style={{ color: 'var(--color-text, #374151)' }}
               >
                 <IconCart />
                 Cart
@@ -70,29 +100,24 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
                     to="/account"
                     className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       location.pathname === '/account'
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                        ? 'bg-opacity-10'
+                        : 'hover:opacity-75 hover:bg-gray-50'
                     }`}
+                    style={location.pathname === '/account' ? {
+                      color: 'var(--color-primary, #dc2626)',
+                      backgroundColor: 'var(--color-primary, #dc2626)',
+                    } : {
+                      color: 'var(--color-text, #374151)',
+                    }}
                   >
                     Account
                   </Link>
-                  {user?.role === 'admin' && (
-                    <Link
-                      to="/admin"
-                      className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                        location.pathname.startsWith('/admin')
-                          ? 'text-primary-600 bg-primary-50'
-                          : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      Admin
-                    </Link>
-                  )}
                 </>
               ) : (
                 <Link
                   to="/login"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 transition-colors"
+                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-75 hover:bg-gray-50"
+                  style={{ color: 'var(--color-text, #374151)' }}
                 >
                   Login
                 </Link>
@@ -110,14 +135,32 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
         {children}
       </main>
 
+      {/* AI Chat Widget */}
+      <AIChat />
+
       {/* Footer */}
-      <footer className="bg-gray-900 text-white mt-auto">
+      <footer 
+        className="mt-auto"
+        style={{ 
+          backgroundColor: settings?.['theme.secondary'] || '#111827',
+          color: '#FFFFFF'
+        }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          {settings?.['theme.footerImage'] && (
+            <div className="mb-8">
+              <img 
+                src={settings['theme.footerImage']} 
+                alt="Footer"
+                className="w-full h-48 object-cover rounded-lg"
+              />
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
-              <h3 className="text-lg font-semibold mb-4">Handmade Harmony</h3>
+              <h3 className="text-lg font-semibold mb-4">{siteName}</h3>
               <p className="text-gray-400 text-sm">
-                Curated handcrafted treasures for your home and lifestyle.
+                {siteTagline}
               </p>
             </div>
             <div>

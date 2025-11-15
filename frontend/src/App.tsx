@@ -6,17 +6,20 @@
 
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { GlobalLayout } from './layouts/GlobalLayout';
 import { routes } from './routes';
 
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <GlobalLayout>
-          {routes}
-        </GlobalLayout>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <GlobalLayout>
+            {routes}
+          </GlobalLayout>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

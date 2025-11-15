@@ -36,13 +36,13 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
   const mainImage = product.images?.[0]?.url || '/placeholder.png';
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
       <Link to={`/product/${product.slug}`} className="block">
-        <div className="aspect-w-1 aspect-h-1 bg-gray-200">
+        <div className="aspect-w-1 aspect-h-1 bg-gray-200 overflow-hidden">
           <img
             src={mainImage}
             alt={product.images?.[0]?.alt || product.name}
-            className="w-full h-48 object-cover"
+            className="w-full h-48 sm:h-56 object-cover transition-transform duration-300 hover:scale-110"
             loading="lazy"
           />
         </div>
@@ -50,8 +50,15 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
       
       <div className="p-4">
         <Link to={`/product/${product.slug}`}>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2 hover:text-primary-600 transition-colors">
-            {product.name}
+          <h3 
+            className="text-lg font-semibold mb-2 transition-colors"
+            style={{ 
+              color: 'var(--color-text, #111827)',
+            }}
+          >
+            <span className="hover:opacity-75" style={{ color: 'var(--color-primary, #dc2626)' }}>
+              {product.name}
+            </span>
           </h3>
         </Link>
         
@@ -60,7 +67,7 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
         </p>
         
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xl font-bold text-gray-900">
+          <span className="text-xl font-bold" style={{ color: 'var(--color-text, #111827)' }}>
             {formatCurrency(product.price)}
           </span>
           {isInStock ? (

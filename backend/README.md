@@ -57,11 +57,11 @@ npm install
 
 Ensure `.env` file exists in the project root (copy from `.env.example`). Required variables for Part A.2:
 
-- `MONGODB_URI`: MongoDB connection string (e.g., `mongodb://localhost:27017/handmade_harmony`)
+- `MONGO_URI`: MongoDB connection string (e.g., `mongodb://localhost:27017/handmade_harmony`)
 - `JWT_SECRET`: Secret for JWT signing (min 32 characters)
 - `CSRF_SECRET`: Secret for CSRF token generation
 - `SESSION_SECRET`: Secret for session management
-- `PORT`: Server port (default: 5000)
+- `PORT`: Server port (default: 3000)
 
 ### Development
 
@@ -71,7 +71,7 @@ Ensure `.env` file exists in the project root (copy from `.env.example`). Requir
 npm run dev
 ```
 
-Server runs on `http://localhost:5000` (or port from `PORT` env var).
+Server runs on `http://localhost:3000` (or port from `PORT` env var).
 
 The server will:
 1. Connect to MongoDB
@@ -150,6 +150,10 @@ Settings from the database take precedence over `.env` values. This allows runti
 - `POST /api/payments/verify` - Verify payment
 - `POST /api/webhook/razorpay` - Razorpay webhook
 
+### AI Assistant
+- `POST /api/ai/chat` - Chat with AI assistant (CSRF protected)
+- `GET /api/ai/recommendations` - Get AI-powered product recommendations
+
 ### Admin
 - All admin endpoints require authentication and appropriate permissions
 - See admin panel documentation for full list
@@ -158,7 +162,7 @@ Settings from the database take precedence over `.env` values. This allows runti
 
 - **CSRF Protection**: All state-changing requests require CSRF token
 - **Rate Limiting**: Applied to auth endpoints and general API
-- **Input Validation**: All inputs validated using Zod/Joi
+- **Input Validation**: All inputs validated using Zod
 - **XSS Prevention**: Content Security Policy headers
 - **SQL Injection**: N/A (MongoDB), but input sanitization applied
 - **Password Hashing**: Argon2id

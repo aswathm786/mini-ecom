@@ -15,7 +15,7 @@ Quick reference for deploying MiniEcom application.
 ```bash
 # Clone repository
 git clone <repo-url>
-cd E-COM-REACT
+cd mini-ecom
 
 # Configure environment
 cp .env.example .env
@@ -28,8 +28,7 @@ cd backend && npm install && cd ..
 
 ### 3. Development
 ```bash
-# Start with bind mounts (live reload)
-export USE_BIND_MOUNTS=1
+# Start with live reload (automatically uses docker-compose.override.yml)
 docker compose up -d
 
 # Access:
@@ -41,11 +40,10 @@ docker compose up -d
 ### 4. Production
 ```bash
 # Build production images
-export USE_BIND_MOUNTS=0
-docker compose build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 
 # Start services
-docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # Run migrations
 chmod +x scripts/migrate.sh

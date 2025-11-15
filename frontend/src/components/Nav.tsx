@@ -109,19 +109,6 @@ export function Nav() {
                   >
                     Account
                   </Link>
-                  {user?.role === 'admin' && (
-                    <Link
-                      to="/admin"
-                      onClick={closeMenu}
-                      className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                        location.pathname.startsWith('/admin')
-                          ? 'text-primary-600 bg-primary-50'
-                          : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      Admin
-                    </Link>
-                  )}
                   <button
                     onClick={async () => {
                       await logout();

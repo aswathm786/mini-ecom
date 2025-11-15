@@ -39,6 +39,14 @@ export class AdminController {
    */
   static async createProduct(req: Request, res: Response): Promise<void> {
     try {
+      if (!req.userId) {
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+      
       const validated = createProductSchema.parse(req.body);
       const files = req.files as Express.Multer.File[] || [];
       
@@ -48,9 +56,9 @@ export class AdminController {
       });
       
       // Set inventory if provided
-      if (validated.qty !== undefined) {
+      if (validated.qty !== undefined && product._id) {
         await inventoryService.setInventory(
-          product._id!,
+          product._id,
           validated.qty,
           validated.lowStockThreshold || 10
         );
@@ -58,7 +66,7 @@ export class AdminController {
       
       // Log audit event
       await AdminController.logAudit({
-        actorId: req.userId!,
+        actorId: req.userId,
         actorType: 'user',
         action: 'product.create',
         objectType: 'product',
@@ -96,6 +104,14 @@ export class AdminController {
    */
   static async updateProduct(req: Request, res: Response): Promise<void> {
     try {
+      if (!req.userId) {
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+      
       const productId = req.params.id;
       const validated = updateProductSchema.parse(req.body);
       const files = req.files as Express.Multer.File[] || [];
@@ -127,7 +143,7 @@ export class AdminController {
       
       // Log audit event
       await AdminController.logAudit({
-        actorId: req.userId!,
+        actorId: req.userId,
         actorType: 'user',
         action: 'product.update',
         objectType: 'product',
@@ -165,6 +181,14 @@ export class AdminController {
    */
   static async deleteProduct(req: Request, res: Response): Promise<void> {
     try {
+      if (!req.userId) {
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+      
       const productId = req.params.id;
       const hardDelete = req.query.hard === 'true';
       
@@ -180,7 +204,7 @@ export class AdminController {
       
       // Log audit event
       await AdminController.logAudit({
-        actorId: req.userId!,
+        actorId: req.userId,
         actorType: 'user',
         action: hardDelete ? 'product.delete' : 'product.deactivate',
         objectType: 'product',
@@ -238,6 +262,14 @@ export class AdminController {
    */
   static async createRefund(req: Request, res: Response): Promise<void> {
     try {
+      if (!req.userId) {
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+      
       const orderId = req.params.id;
       const validated = refundSchema.parse(req.body);
       
@@ -271,7 +303,7 @@ export class AdminController {
         paymentId: payment._id?.toString(),
         orderId,
         amount: refundAmount,
-        initiatedBy: req.userId!,
+        initiatedBy: req.userId,
         status: 'requested',
         reason: validated.reason,
         createdAt: new Date(),
@@ -290,7 +322,7 @@ export class AdminController {
       
       // Log audit event
       await AdminController.logAudit({
-        actorId: req.userId!,
+        actorId: req.userId,
         actorType: 'user',
         action: 'refund.create',
         objectType: 'refund',

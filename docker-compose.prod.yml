@@ -97,28 +97,8 @@ services:
       timeout: 10s
       retries: 3
 
-  # Nginx Reverse Proxy (Production)
-  nginx:
-    image: nginx:alpine
-    container_name: miniecom_nginx_prod
-    restart: always
-    volumes:
-      - ./nginx/miniecom.conf:/etc/nginx/conf.d/default.conf:ro
-      - frontend_dist_prod:/usr/share/nginx/html:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    ports:
-      - "${NGINX_PORT:-443}:443"
-      - "${NGINX_HTTP_PORT:-80}:80"
-    networks:
-      - miniecom_network_prod
-    depends_on:
-      - frontend
-      - api
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # Note: Nginx reverse proxy is available in base docker-compose.yml with profile "proxy"
+  # To use it in production: docker compose --profile proxy -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 volumes:
   mongo_data_prod:

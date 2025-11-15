@@ -286,8 +286,10 @@ This creates:
 Run the integration test:
 
 ```bash
-npm test -- b1_checkout.test.ts
+npm test -- test/b1_checkout.test.ts
 ```
+
+Note: The test script uses Jest. Ensure the test file path is correct relative to the project root.
 
 The test verifies:
 - Product creation

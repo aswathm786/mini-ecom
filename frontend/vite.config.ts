@@ -14,7 +14,7 @@ export default defineConfig({
     port: 5173, // Vite default port
     proxy: {
       '/api': {
-        target: 'http://localhost:3000', // Backend API port
+        target: process.env.VITE_API_URL || (process.env.NODE_ENV === 'production' ? 'http://api:3000' : 'http://localhost:3000'),
         changeOrigin: true,
       },
     },
@@ -22,5 +22,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./test/setup.ts'],
+    testMatch: ['**/test/**/*.test.{ts,tsx}'],
   },
 });

@@ -20,6 +20,7 @@ import cartRoutes from './cart';
 import orderRoutes from './orders';
 import adminRoutes from './admin';
 import { SupportTicketController } from '../controllers/SupportTicketController';
+import { AIController } from '../controllers/AIController';
 
 const router = Router();
 
@@ -80,6 +81,54 @@ router.get('/support/tickets', requireAuth, SupportTicketController.listTickets)
 router.get('/support/tickets/:id', requireAuth, SupportTicketController.getTicket);
 router.post('/support/tickets', requireAuth, csrfProtection, SupportTicketController.createTicket);
 router.post('/support/tickets/:id/reply', requireAuth, csrfProtection, SupportTicketController.replyToTicket);
+
+// AI Assistant routes (public, rate limited)
+router.post('/ai/chat', csrfProtection, AIController.chat);
+router.get('/ai/recommendations', AIController.getRecommendations);
+
+// Theme settings (public - for frontend to load theme)
+router.get('/theme-settings', async (req, res) => {
+  try {
+    const db = mongo.getDb();
+    const settingsCollection = db.collection('settings');
+    
+    const themeSettings = await settingsCollection
+      .find({ key: { $regex: /^theme\./ } })
+      .toArray();
+    
+    const settings: Record<string, any> = {};
+    themeSettings.forEach(setting => {
+      settings[setting.key] = setting.value;
+    });
+    
+    // Set defaults
+    const defaults = {
+      'theme.primary': '#DC2626',
+      'theme.secondary': '#1F2937',
+      'theme.accent': '#F59E0B',
+      'theme.background': '#FFFFFF',
+      'theme.text': '#111827',
+      'theme.textLight': '#6B7280',
+      'theme.headerStyle': 'default',
+      'theme.footerStyle': 'default',
+      'theme.layoutWidth': 'container',
+      'theme.borderRadius': 'md',
+      'theme.shadow': 'md',
+      'theme.animation': true,
+    };
+    
+    res.json({
+      ok: true,
+      data: { ...defaults, ...settings },
+    });
+  } catch (error) {
+    console.error('Error getting theme settings:', error);
+    res.status(500).json({
+      ok: false,
+      error: 'Failed to fetch theme settings',
+    });
+  }
+});
 
 // Admin routes
 router.use(adminRoutes);

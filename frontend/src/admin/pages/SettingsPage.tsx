@@ -221,6 +221,30 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* Authentication Settings */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Authentication Settings</h2>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="session-expires-in" className="block text-sm font-medium text-gray-700 mb-1">
+                Session Expiration
+              </label>
+              <input
+                id="session-expires-in"
+                type="text"
+                value={localSettings['auth.session.expires_in'] || '7d'}
+                onChange={(e) => setLocalSettings({ ...localSettings, 'auth.session.expires_in': e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="7d"
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                Format: number followed by unit (s=seconds, m=minutes, h=hours, d=days). 
+                Examples: 7d, 30d, 1h, 30m. Default: 7d. This applies to new sessions only.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex justify-end">
           <Button type="submit" variant="primary" isLoading={saving}>
             Save Settings

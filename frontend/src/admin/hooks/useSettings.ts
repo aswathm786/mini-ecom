@@ -40,6 +40,9 @@ export interface Settings {
   'refunds.window_days'?: number;
   'refunds.auto_process'?: boolean;
   
+  // Auth settings
+  'auth.session.expires_in'?: string;
+  
   // Other settings
   [key: string]: any;
 }

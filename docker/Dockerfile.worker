@@ -31,5 +31,5 @@ RUN mkdir -p storage/logs && \
 USER nodejs
 
 # Start worker
-CMD ["node", "dist/worker.js"]
+CMD ["node", "dist/cli/jobs_worker.js"]
 

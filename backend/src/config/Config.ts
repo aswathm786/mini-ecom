@@ -119,7 +119,7 @@ export const Config = {
   PORT: int('PORT', 3000),
   
   // Database
-  MONGODB_URI: get('MONGODB_URI') || get('MONGO_URI') || require('MONGO_URI'),
+  MONGODB_URI: get('MONGO_URI') || require('MONGO_URI'),
   
   // Security
   JWT_SECRET: require('JWT_SECRET'),

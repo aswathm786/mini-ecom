@@ -1,7 +1,8 @@
 version: '3.8'
 
-# Development Docker Compose
-# Uses bind mounts for live reload and development
+# Development Docker Compose (DEPRECATED - use docker-compose.override.yml instead)
+# This file is kept for backward compatibility
+# Use: docker-compose up (automatically uses docker-compose.override.yml)
 
 services:
   # MongoDB Database

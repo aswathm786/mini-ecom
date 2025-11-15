@@ -9,6 +9,7 @@ import { AdminController } from '../controllers/AdminController';
 import { AdminRefundController } from '../controllers/AdminRefundController';
 import { AdminInvoiceController } from '../controllers/AdminInvoiceController';
 import { SupportTicketController } from '../controllers/SupportTicketController';
+import { ThemeSettingsController } from '../controllers/ThemeSettingsController';
 import { requireAuth } from '../middleware/Auth';
 import { requireAdmin } from '../middleware/RequireRole';
 import { csrfProtection } from '../middleware/CSRF';
@@ -123,6 +124,12 @@ router.get('/admin/support/tickets', SupportTicketController.listTickets);
 router.get('/admin/support/tickets/:id', SupportTicketController.getTicket);
 router.post('/admin/support/tickets/:id/reply', SupportTicketController.replyToTicket);
 router.post('/admin/support/tickets/:id/status', SupportTicketController.updateStatus);
+
+// Theme Settings
+router.get('/admin/theme-settings', ThemeSettingsController.getThemeSettings);
+router.put('/admin/theme-settings', ThemeSettingsController.updateThemeSettings);
+router.post('/admin/theme-settings/upload-logo', uploadMultiple.single('logo'), ThemeSettingsController.uploadLogo);
+router.post('/admin/theme-settings/upload-image', uploadMultiple.single('image'), ThemeSettingsController.uploadImage);
 
 export default router;
 

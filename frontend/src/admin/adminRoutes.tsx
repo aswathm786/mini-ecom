@@ -17,6 +17,7 @@ import { UsersPage } from './pages/UsersPage';
 import { UserShowPage } from './pages/UserShowPage';
 import { RolesPage } from './pages/RolesPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ThemeSettingsPage } from './pages/ThemeSettingsPage';
 import { WebhooksPage } from './pages/WebhooksPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -39,6 +40,7 @@ export function AdminRoutes() {
         <Route path="users/:id" element={<UserShowPage />} />
         <Route path="roles" element={<RolesPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="theme" element={<ThemeSettingsPage />} />
         <Route path="webhooks" element={<WebhooksPage />} />
         <Route path="audit" element={<AuditLogsPage />} />
         <Route path="reports" element={<ReportsPage />} />

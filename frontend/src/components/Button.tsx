@@ -25,10 +25,17 @@ export function Button({
   const baseStyles = 'inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
   
   const variants = {
-    primary: 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500',
+    primary: 'text-white hover:opacity-90 focus:ring-primary-500',
     secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500',
-    outline: 'border-2 border-primary-600 text-primary-600 hover:bg-primary-50 focus:ring-primary-500',
+    outline: 'border-2 text-primary-600 hover:bg-primary-50 focus:ring-primary-500',
     ghost: 'text-gray-700 hover:bg-gray-100 focus:ring-gray-500',
+  };
+  
+  const getPrimaryStyles = () => {
+    return {
+      backgroundColor: 'var(--color-primary, #dc2626)',
+      borderColor: 'var(--color-primary, #dc2626)',
+    };
   };
   
   const sizes = {
@@ -39,9 +46,14 @@ export function Button({
   
   const classes = `${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`;
   
+  const style = variant === 'primary' ? getPrimaryStyles() : 
+               variant === 'outline' ? { borderColor: 'var(--color-primary, #dc2626)', color: 'var(--color-primary, #dc2626)' } : 
+               undefined;
+  
   return (
     <button
       className={classes}
+      style={style}
       disabled={disabled || isLoading}
       {...props}
     >

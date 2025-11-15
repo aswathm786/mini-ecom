@@ -17,6 +17,7 @@ const navItems = [
   { path: '/admin/roles', label: 'Roles', icon: '🔐' },
   { path: '/admin/support/tickets', label: 'Support Tickets', icon: '🎫' },
   { path: '/admin/settings', label: 'Settings', icon: '⚙️' },
+  { path: '/admin/theme', label: 'Theme & Design', icon: '🎨' },
   { path: '/admin/webhooks', label: 'Webhooks', icon: '🔗' },
   { path: '/admin/audit', label: 'Audit Logs', icon: '📋' },
   { path: '/admin/reports', label: 'Reports', icon: '📈' },
