@@ -74,8 +74,8 @@ class MailService {
    */
   private async sendViaSendmail(options: EmailOptions): Promise<EmailResult> {
     try {
-      const fromEmail = Config.get('SMTP_FROM_EMAIL', 'noreply@handmadeharmony.com');
-      const fromName = Config.get('SMTP_FROM_NAME', 'Handmade Harmony');
+      const fromEmail = Config.get('SMTP_FROM_EMAIL', 'noreply@yourdomain.com');
+      const fromName = Config.get('SMTP_FROM_NAME', 'Your Store Name');
       const from = `${fromName} <${fromEmail}>`;
       
       const to = Array.isArray(options.to) ? options.to.join(', ') : options.to;
@@ -122,8 +122,8 @@ class MailService {
     options: EmailOptions
   ): Promise<EmailResult> {
     try {
-      const fromEmail = Config.get('SMTP_FROM_EMAIL', 'noreply@handmadeharmony.com');
-      const fromName = Config.get('SMTP_FROM_NAME', 'Handmade Harmony');
+      const fromEmail = Config.get('SMTP_FROM_EMAIL', 'noreply@yourdomain.com');
+      const fromName = Config.get('SMTP_FROM_NAME', 'Your Store Name');
       
       const mailOptions = {
         from: `${fromName} <${fromEmail}>`,
