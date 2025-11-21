@@ -12,10 +12,11 @@ import { ShippingOption } from '../../hooks/useCheckout';
 interface ShippingOptionsProps {
   pincode: string;
   selected?: string;
-  onSelect: (service: string) => void;
+  onSelect: (service: string, charge?: number) => void;
+  onOptionsLoaded?: (options: ShippingOption[]) => void;
 }
 
-export function ShippingOptions({ pincode, selected, onSelect }: ShippingOptionsProps) {
+export function ShippingOptions({ pincode, selected, onSelect, onOptionsLoaded }: ShippingOptionsProps) {
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,9 +37,10 @@ export function ShippingOptions({ pincode, selected, onSelect }: ShippingOptions
       const response = await csrfFetch(`/api/shipping/rates?to_pincode=${pincode}`);
       if (response.ok && response.data) {
         setOptions(response.data);
+        onOptionsLoaded?.(response.data);
         // Auto-select first option if none selected
         if (!selected && response.data.length > 0) {
-          onSelect(response.data[0].service);
+          onSelect(response.data[0].service, response.data[0].charge);
         }
       } else {
         setError(response.error || 'Failed to load shipping rates');
@@ -101,7 +103,7 @@ export function ShippingOptions({ pincode, selected, onSelect }: ShippingOptions
             name="shipping"
             value={option.service}
             checked={selected === option.service}
-            onChange={() => onSelect(option.service)}
+            onChange={() => onSelect(option.service, option.charge)}
             className="sr-only"
           />
           <div className="flex items-center justify-between">

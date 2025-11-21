@@ -55,23 +55,43 @@ export function SupportTicketsPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({
+      const queryParams: Record<string, any> = {
         page: page.toString(),
         limit: '20',
-        ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
+      };
+
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== '' && value !== null && value !== undefined) {
+          queryParams[key] = value;
+        }
       });
+
+      // Backend returns: { ok: true, data: { items, total, pages } }
+      // api.get extracts response.data which is { items, total, pages }
+      const response = await api.get<any>('/support/tickets', queryParams);
       
-      const response = await api.get<{ ok: boolean; data: Ticket[]; total: number; pages: number }>(`/support/tickets?${params}`);
+      // Handle response structure - api.get returns response.data from csrfFetch
+      // which is { items, total, pages } from backend's data field
+      console.log('Tickets response:', response);
       
-      if (response.ok && response.data) {
-        setTickets(response.data.data || []);
-        setTotal(response.data.total || 0);
-        setPages(response.data.pages || 1);
+      if (response && typeof response === 'object') {
+        // Check if response has items directly or nested in data
+        const items = response.items || (response.data && response.data.items) || [];
+        const total = response.total || (response.data && response.data.total) || 0;
+        const pages = response.pages || (response.data && response.data.pages) || 1;
+        
+        setTickets(items);
+        setTotal(total);
+        setPages(pages);
       } else {
-        setError('Failed to load tickets');
+        setTickets([]);
+        setTotal(0);
+        setPages(1);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tickets');
+      const message = err instanceof Error ? err.message : 'Failed to load tickets';
+      setError(message);
+      addToast(message, 'error');
     } finally {
       setLoading(false);
     }
@@ -85,13 +105,9 @@ export function SupportTicketsPage() {
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
     try {
-      const response = await api.post(`/support/tickets/${ticketId}/status`, { status: newStatus });
-      if (response.ok) {
-        addToast('Ticket status updated', 'success');
-        loadTickets();
-      } else {
-        addToast('Failed to update ticket status', 'error');
-      }
+      await api.post(`/support/tickets/${ticketId}/status`, { status: newStatus });
+      addToast('Ticket status updated', 'success');
+      loadTickets();
     } catch (err) {
       addToast('Failed to update ticket status', 'error');
     }
@@ -208,36 +224,22 @@ export function SupportTicketsPage() {
       </div>
 
       <FiltersBar
-        filters={[
-          {
-            key: 'status',
-            label: 'Status',
-            type: 'select',
-            options: statusOptions,
-            value: filters.status || '',
-            onChange: (value) => handleFilterChange('status', value),
-          },
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onReset={() => {
+          setFilters({});
+          setPage(1);
+        }}
+        searchPlaceholder="Search by subject or user email..."
+        statusOptions={statusOptions}
+        customFilters={[
           {
             key: 'priority',
             label: 'Priority',
             type: 'select',
             options: priorityOptions,
-            value: filters.priority || '',
-            onChange: (value) => handleFilterChange('priority', value),
-          },
-          {
-            key: 'search',
-            label: 'Search',
-            type: 'text',
-            placeholder: 'Search by subject or user email...',
-            value: filters.search || '',
-            onChange: (value) => handleFilterChange('search', value),
           },
         ]}
-        onReset={() => {
-          setFilters({});
-          setPage(1);
-        }}
       />
 
       {error && (

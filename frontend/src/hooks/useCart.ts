@@ -5,7 +5,7 @@
  * Supports optimistic updates and rollback on error.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { csrfFetch } from '../lib/csrfFetch';
 import { getStorageItem, setStorageItem, removeStorageItem } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,6 +34,8 @@ export function useCart() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const mergeAttemptedRef = useRef(false);
+  const previousAuthRef = useRef(isAuthenticated);
 
   /**
    * Load cart from server or localStorage
@@ -99,16 +101,23 @@ export function useCart() {
    */
   const addItem = useCallback(
     async (productId: string, qty: number = 1): Promise<boolean> => {
+      // Get current items for rollback
+      let currentItems: CartItem[] = [];
+      setItems((prev) => {
+        currentItems = prev;
+        return prev;
+      });
+
       // Optimistic update
-      const existingItem = items.find((item) => item.productId === productId);
+      const existingItem = currentItems.find((item) => item.productId === productId);
       const optimisticItems = existingItem
-        ? items.map((item) =>
+        ? currentItems.map((item) =>
             item.productId === productId
               ? { ...item, qty: item.qty + qty }
               : item
           )
         : [
-            ...items,
+            ...currentItems,
             {
               productId,
               qty,
@@ -127,29 +136,59 @@ export function useCart() {
         });
 
         if (response.ok && response.data) {
-          // Update with server response
-          setItems(response.data.items || optimisticItems);
-          if (isAuthenticated) {
-            // Server cart updated, clear localStorage
-            removeStorageItem(STORAGE_KEY);
-          } else {
-            saveToLocalStorage(response.data.items || optimisticItems);
+          // Reload cart from server to get enriched product data
+          // This ensures we have product images, slugs, etc.
+          try {
+            const cartResponse = await csrfFetch('/api/cart');
+            if (cartResponse.ok && cartResponse.data?.items) {
+              setItems(cartResponse.data.items);
+              if (isAuthenticated) {
+                removeStorageItem(STORAGE_KEY);
+              } else {
+                saveToLocalStorage(cartResponse.data.items);
+              }
+            } else {
+              // Fallback to response data if reload fails
+              setItems(response.data.items || optimisticItems);
+              if (isAuthenticated) {
+                removeStorageItem(STORAGE_KEY);
+              } else {
+                saveToLocalStorage(response.data.items || optimisticItems);
+              }
+            }
+          } catch (reloadError) {
+            // If reload fails, use the response data
+            console.warn('Failed to reload cart after adding item:', reloadError);
+            setItems(response.data.items || optimisticItems);
+            if (isAuthenticated) {
+              removeStorageItem(STORAGE_KEY);
+            } else {
+              saveToLocalStorage(response.data.items || optimisticItems);
+            }
           }
           return true;
         } else {
           // Rollback on error
-          setItems(items);
-          saveToLocalStorage(items);
+          setItems(currentItems);
+          saveToLocalStorage(currentItems);
+          // Check if error is due to authentication
+          if (response.code === 'UNAUTHORIZED' || response.error?.includes('Authentication') || response.error?.includes('401')) {
+            throw new Error('Authentication required');
+          }
           throw new Error(response.error || 'Failed to add item to cart');
         }
       } catch (error) {
         // Rollback on error
-        setItems(items);
-        saveToLocalStorage(items);
+        setItems(currentItems);
+        saveToLocalStorage(currentItems);
+        // Re-throw authentication errors as-is
+        if (error instanceof Error && (error.message.includes('Authentication') || error.message.includes('401'))) {
+          throw error;
+        }
         throw error;
       }
     },
-    [items, isAuthenticated, saveToLocalStorage]
+    [isAuthenticated, saveToLocalStorage]
   );
 
   /**
@@ -274,42 +313,71 @@ export function useCart() {
    * Merge localStorage cart with server cart on login
    */
   const mergeCarts = useCallback(async () => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || mergeAttemptedRef.current) {
       return;
     }
 
     const localCart = getStorageItem<Cart>(STORAGE_KEY, { items: [] });
     if (localCart.items.length === 0) {
+      mergeAttemptedRef.current = true;
       return;
     }
 
+    // Mark as attempted to prevent infinite loops
+    mergeAttemptedRef.current = true;
+
     try {
-      // Add each local item to server cart
-      for (const item of localCart.items) {
-        await addItem(item.productId, item.qty);
+      // Add each local item to server cart (skip items that fail)
+      const itemsToAdd = [...localCart.items];
+      for (const item of itemsToAdd) {
+        try {
+          await addItem(item.productId, item.qty);
+        } catch (error) {
+          // Log error but continue with other items
+          console.warn(`Failed to merge cart item ${item.productId}:`, error);
+        }
       }
-      // Clear localStorage after merge
+      // Clear localStorage after merge attempt (even if some items failed)
       removeStorageItem(STORAGE_KEY);
     } catch (error) {
       console.error('Error merging carts:', error);
     }
   }, [isAuthenticated, addItem]);
 
+  // Reset merge flag when auth state changes from authenticated to unauthenticated
+  useEffect(() => {
+    if (previousAuthRef.current && !isAuthenticated) {
+      mergeAttemptedRef.current = false;
+    }
+    previousAuthRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
   // Load cart on mount and when auth state changes
   useEffect(() => {
     loadCart();
   }, [loadCart]);
 
-  // Merge carts when user logs in
+  // Merge carts when user logs in (only once)
   useEffect(() => {
-    if (isAuthenticated) {
-      mergeCarts();
+    if (isAuthenticated && !mergeAttemptedRef.current && !isLoading) {
+      // Use setTimeout to ensure this runs after loadCart completes
+      const timer = setTimeout(() => {
+        mergeCarts();
+      }, 1000);
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, mergeCarts]);
+  }, [isAuthenticated, isLoading, mergeCarts]);
 
-  // Calculate totals
-  const subtotal = items.reduce((sum, item) => sum + item.priceAt * item.qty, 0);
-  const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
+  // Calculate totals (with validation to prevent corrupted data)
+  const subtotal = items.reduce((sum, item) => {
+    const qty = typeof item.qty === 'number' && item.qty > 0 ? item.qty : 0;
+    const price = typeof item.priceAt === 'number' && item.priceAt >= 0 ? item.priceAt : 0;
+    return sum + (price * qty);
+  }, 0);
+  const itemCount = items.reduce((sum, item) => {
+    const qty = typeof item.qty === 'number' && item.qty > 0 ? item.qty : 0;
+    return sum + qty;
+  }, 0);
 
   return {
     items,

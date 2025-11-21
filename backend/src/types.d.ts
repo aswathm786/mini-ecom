@@ -8,8 +8,10 @@ export interface User {
   password: string;
   firstName?: string;
   lastName?: string;
+  phone?: string;
   isEmailVerified: boolean;
   role?: string;
+  authProvider?: 'local' | 'google' | 'otp';
   status?: 'active' | 'suspended' | 'deleted';
   emailPreferences?: {
     marketing?: boolean;
@@ -21,6 +23,9 @@ export interface User {
   resetPasswordExpires?: Date;
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
+  pendingEmail?: string;
+  emailChangeToken?: string;
+  emailChangeExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +42,16 @@ export interface Session {
   createdAt: Date;
   expiresAt: Date;
   refreshExpiresAt?: Date;
+}
+
+export interface ResetPasswordToken {
+  _id?: string;
+  userId: string;
+  tokenHash: string; // SHA256 hash of the token
+  used: boolean;
+  usedAt?: Date;
+  expiresAt: Date;
+  createdAt: Date;
 }
 
 export interface WebhookEvent {
@@ -83,6 +98,55 @@ export interface JWTPayload {
   sessionId: string;
   iat?: number;
   exp?: number;
+}
+
+export interface Theme {
+  _id?: string;
+  name: string;
+  description?: string;
+  palette: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+    surface: string;
+    success: string;
+    warning: string;
+    danger: string;
+    text: string;
+  };
+  typography: {
+    baseFont: string;
+    headingFont: string;
+  };
+  borderRadius: {
+    sm: number;
+    md: number;
+    lg: number;
+  };
+  spacingScale: number[];
+  shadows: Record<string, string>;
+  images: {
+    logo?: string;
+    favicon?: string;
+    banners?: string[];
+  };
+  animation: {
+    durationFast: number;
+    durationSlow: number;
+  };
+  email: {
+    background: string;
+    text: string;
+    buttonBackground: string;
+    buttonText: string;
+  };
+  isActive: boolean;
+  isArchived: boolean;
+  scheduledAt?: Date | null;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 declare global {

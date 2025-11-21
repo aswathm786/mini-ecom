@@ -1,127 +1,173 @@
 # AI Assistant Setup Guide
 
-This guide explains how to set up the AI assistant feature using Google Gemini API.
+This guide explains how to set up the AI assistant feature using Google Gemini, OpenAI, Anthropic, OpenRouter, or your own local LLM gateway.
 
 ---
 
 ## Overview
 
-The AI assistant helps customers:
-- Understand products and their features
-- Check product availability and inventory
-- Get product recommendations
-- Answer general shopping questions
+The Handmade Harmony AI stack now covers:
 
-The AI has access to:
-- Product catalog (names, descriptions, prices, categories)
-- Inventory levels (stock availability)
-- Product categories
+- **Shopping assistant** – floating chat widget with streaming replies and history per visitor
+- **Semantic search** – rewrites fuzzy queries and suggests filters on the fly
+- **Product discovery boosts** – AI-generated summaries, highlights, comparisons, FAQs and recommendations on PDP + home
+- **Order help** – customer account page “Ask AI” panel for shipment / reorder questions
+- **Admin copilots** – description generator, support reply aide, analytics insights, email composer
+
+Data sources available to the model:
+
+- Product catalog (names, descriptions, categories, SEO metadata)
+- Inventory snapshots
+- User context (cart, wishlist placeholder, recent orders)
+- Sales aggregates (when supplied via admin UI)
 
 ---
 
 ## Prerequisites
 
-- Google account
-- Internet connection (for API calls)
+- Google / OpenAI / Anthropic account (you can prioritize any provider)
+- Internet connectivity for outbound HTTPS calls
+- API key(s) stored securely via env vars or runtime settings
+
+Supported providers & env keys:
+
+| Provider   | Env Key                | Default Model          |
+|------------|------------------------|------------------------|
+| Gemini     | `GEMINI_API_KEY`       | `gemini-1.5-pro`       |
+| OpenAI     | `OPENAI_API_KEY`       | `gpt-4o-mini`          |
+| Anthropic  | `ANTHROPIC_API_KEY`    | `claude-3-haiku`       |
+| OpenRouter | `OPENROUTER_API_KEY`   | `OPENROUTER_MODEL`     |
+| Local LLM  | `LOCAL_LLM_URL` (+ optional `LOCAL_LLM_API_KEY`) | `LOCAL_LLM_MODEL` |
+
+`AI_DEFAULT_PROVIDER` controls the priority order (falls back automatically if a key is missing).
 
 ---
 
-## Step 1: Get Gemini API Key
+## Step 1: Gather API Keys
 
-1. **Visit Google AI Studio:**
-   - Go to: https://makersuite.google.com/app/apikey
-   - Or visit: https://aistudio.google.com/app/apikey
+You can plug in one or multiple providers. The service automatically tries them in priority order.
 
-2. **Sign in:**
-   - Use your Google account to sign in
+### Gemini
+1. Visit https://makersuite.google.com/app/apikey
+2. Create an API key and copy it
 
-3. **Create API Key:**
-   - Click "Create API Key" button
-   - Select "Create API key in new project" or use existing project
-   - Copy the generated API key
+### OpenAI
+1. Go to https://platform.openai.com/api-keys
+2. Generate a secret key with GPT-4o access
 
-**Important:** Keep your API key secure and don't share it publicly.
+### Anthropic
+1. Go to https://console.anthropic.com/
+2. Create an API key with Claude 3 permissions
 
----
+### OpenRouter
+1. Visit https://openrouter.ai/keys
+2. Generate an API key and optionally set a default model via `OPENROUTER_MODEL`
 
-## Step 2: Add API Key to Environment
+### Local LLM Gateway
+1. Deploy any OpenAI-compatible server (Ollama, LM Studio, vLLM, etc.)
+2. Expose an HTTPS endpoint, set `LOCAL_LLM_URL`, and optionally `LOCAL_LLM_API_KEY` / `LOCAL_LLM_MODEL`
 
-### For Docker Setup
-
-1. **Open `.env` file** in the project root
-2. **Add the API key:**
-   ```bash
-   GEMINI_API_KEY=your_actual_api_key_here
-   ```
-3. **Save the file**
-4. **Restart services:**
-   ```bash
-   docker compose restart api
-   ```
-
-### For Native Setup
-
-1. **Open `.env` file** in the project root
-2. **Add the API key:**
-   ```bash
-   GEMINI_API_KEY=your_actual_api_key_here
-   ```
-3. **Save the file**
-4. **Restart backend server:**
-   ```bash
-   # Stop the current server (Ctrl+C)
-   # Then restart:
-   cd backend
-   npm run dev
-   ```
+> **Important:** Never commit these keys. Store them in `.env`/secrets and rotate periodically.
 
 ---
 
-## Step 3: Verify AI is Working
+## Step 2: Add Keys to Environment
+
+### Docker / Compose
+```
+GEMINI_API_KEY=xxxx
+OPENAI_API_KEY=xxxx
+ANTHROPIC_API_KEY=xxxx
+OPENROUTER_API_KEY=xxxx
+OPENROUTER_MODEL=openrouter/auto
+LOCAL_LLM_URL=https://llm.internal/v1/chat/completions
+LOCAL_LLM_API_KEY=optional-token
+LOCAL_LLM_MODEL=llama3-8b
+AI_DEFAULT_PROVIDER=gemini
+AI_STREAMING_ENABLED=true
+```
+Then restart:
+```
+docker compose restart api
+```
+
+### Native dev server
+1. Update `backend/.env` with the same variables
+2. Restart backend (`npm run dev`) so Config picks up new keys
+
+---
+
+## Step 3: Configure Feature Flags
+
+Runtime AI behavior is stored in Mongo `settings` collection (`key: "ai.settings"`). Example payload:
+
+```json
+{
+  "enabled": true,
+  "streamingEnabled": true,
+  "providerPriority": ["gemini", "openai", "anthropic", "openrouter", "local"],
+  "chatbot": { "enabled": true, "showOnDesktop": true, "showOnMobile": true },
+  "recommendations": { "enabled": true, "maxItems": 6 },
+  "search": { "enabled": true, "suggestFilters": true },
+  "productPage": { "summary": true, "highlights": true, "comparisons": true, "faqs": true },
+  "orderAssist": { "enabled": true, "maxLookbackDays": 120 },
+  "adminTools": {
+    "productContent": true,
+    "supportReplies": true,
+    "emailGenerator": true,
+    "analytics": true
+  }
+}
+```
+
+Update via Mongo shell:
+```js
+db.settings.updateOne(
+  { key: 'ai.settings' },
+  { $set: { key: 'ai.settings', value: JSON.stringify(<payload>), type: 'json', updatedAt: new Date() } },
+  { upsert: true }
+);
+```
+
+> Cache TTL is 60s; updates take effect immediately after expiry or after the `/api/ai/admin/settings` endpoint is called.
+
+---
+
+## Step 4: Verify End-to-End
 
 1. **Start the application** (if not already running)
 2. **Open the website** in your browser
-3. **Look for the chat button** in the bottom-right corner
-4. **Click the chat button** to open the AI assistant
-5. **Try asking:**
-   - "What products do you have?"
-   - "Show me products in stock"
-   - "Tell me about [product name]"
+3. **Look for the floating Harmony AI badge** (bottom-right)
+4. **Test new surfaces**
+   - Chat: ask “Show me gifts under ₹500”
+   - Search bar: try “moody teal mugs for gifting”
+   - Product page: confirm summary/highlights render
+   - Account → order details: use the “Need help?” box
+   - Admin → AI Studio: run each copilot panel
 
 If the AI responds, it's working correctly!
 
 ---
 
-## Features
+## Feature Matrix
 
-### What the AI Can Do
+| Surface | Description | Endpoint |
+|---------|-------------|----------|
+| Chat assistant | `/api/ai/chat` with streaming + CSRF + fingerprint binding | `POST /ai/chat` |
+| Recommendations | Personalized suggestions using cart/orders/trending data | `POST /ai/recommend` |
+| Semantic search | Rewrites query + returns filters / suggestions | `POST /ai/search` |
+| PDP enhancements | Summary, highlights, comparisons, FAQs | `POST /ai/product-enhancements` |
+| Shipping/order help | Account page AI answering “Where is my order?” | `POST /ai/order-assist` |
+| Admin product copy | Generates full marketing copy + SEO | `POST /ai/admin/product-content` |
+| Admin email builder | HTML + CTA + preheader suggestions | `POST /ai/admin/email` |
+| Admin support reply | Drafts tone-aware response + tags | `POST /ai/admin/support-reply` |
+| Admin analytics | Turns sales snapshots into insights | `POST /ai/admin/analytics` |
 
-✅ **Product Information:**
-- Answer questions about product features
-- Provide product descriptions
-- Share pricing information
-
-✅ **Inventory Status:**
-- Check if products are in stock
-- Tell you how many items are available
-- Inform about out-of-stock items
-
-✅ **Recommendations:**
-- Suggest products based on your needs
-- Help you find products by category
-- Answer questions about product comparisons
-
-✅ **General Help:**
-- Answer shopping-related questions
-- Provide store information
-- Help with navigation
-
-### What the AI Cannot Do
-
-❌ Process orders (use checkout for that)
-❌ Access customer account information
-❌ Make changes to products or inventory
-❌ Handle payment processing
+What the AI still **will not** do automatically:
+- Modify inventory or orders
+- Reveal sensitive PII (addresses, payment data)
+- Execute refunds / returns on its own
+- Send emails without explicit admin confirmation
 
 ---
 
@@ -221,11 +267,11 @@ By default, the AI sees up to 50 products. To change:
 
 ## Security Notes
 
-1. **Never commit `.env` file** to version control
-2. **Keep API key secret** - don't share it publicly
-3. **Use environment variables** - never hardcode the key
-4. **Rotate keys** if compromised
-5. **Monitor usage** in Google AI Studio dashboard
+1. API keys always remain server-side; frontend only talks to proxy endpoints.
+2. All AI routes enforce CSRF protection + rate limiting (chat/search/admin buckets).
+3. Chat history is scoped per-session and fingerprinted (UA + IP + accept headers).
+4. `sanitizeForAI` removes e-mails, phones, payment tokens before prompts, and cleans responses to prevent script injection.
+5. Admin AI tools respect feature flags—disable them instantly via `ai.settings` if needed.
 
 ---
 

@@ -19,6 +19,7 @@ export function AddressSelector({ selectedAddress, onSelect, onNewAddress }: Add
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [loadingPincode, setLoadingPincode] = useState(false);
   const [newAddress, setNewAddress] = useState<Address>({
     name: '',
     street: '',
@@ -44,6 +45,33 @@ export function AddressSelector({ selectedAddress, onSelect, onNewAddress }: Add
       console.error('Error loading addresses:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePincodeChange = async (pincode: string) => {
+    // Remove non-numeric characters
+    const cleanPincode = pincode.replace(/\D/g, '');
+    setNewAddress({ ...newAddress, pincode: cleanPincode });
+    
+    // Auto-fetch city and state if pincode is 6 digits
+    if (cleanPincode.length === 6 && /^\d{6}$/.test(cleanPincode)) {
+      setLoadingPincode(true);
+      try {
+        const response = await csrfFetch(`/api/pincode/${cleanPincode}`);
+        if (response.ok && response.data) {
+          const { city, state } = response.data;
+          setNewAddress(prev => ({
+            ...prev,
+            ...(city && { city }),
+            ...(state && { state }),
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching pincode data:', error);
+        // Silently fail - user can manually enter city/state
+      } finally {
+        setLoadingPincode(false);
+      }
     }
   };
 
@@ -184,15 +212,16 @@ export function AddressSelector({ selectedAddress, onSelect, onNewAddress }: Add
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="pincode" className="block text-sm font-medium text-gray-700 mb-1">
-                  Pincode *
+                  Pincode * {loadingPincode && <span className="text-xs text-gray-500">(Looking up...)</span>}
                 </label>
                 <input
                   id="pincode"
                   type="text"
                   required
                   pattern="[0-9]{6}"
+                  maxLength={6}
                   value={newAddress.pincode}
-                  onChange={(e) => setNewAddress({ ...newAddress, pincode: e.target.value })}
+                  onChange={(e) => handlePincodeChange(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>

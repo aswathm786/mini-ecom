@@ -32,6 +32,9 @@ export interface Settings {
   'store.phone'?: string;
   'store.address'?: string;
   
+  // Site settings
+  'site.name'?: string;
+  
   // Invoice settings
   'invoice.prefix'?: string;
   'invoice.number_format'?: string;
@@ -66,7 +69,8 @@ export function useSettings(): UseSettingsResult {
     setError(null);
 
     try {
-      const data = await api.get<Settings>('/settings');
+      // Use platform settings endpoint which returns a flattened settings object
+      const data = await api.get<Settings>('/settings/platform');
       setSettings(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch settings');
@@ -81,14 +85,21 @@ export function useSettings(): UseSettingsResult {
 
   const updateSettings = useCallback(async (updates: Partial<Settings>): Promise<boolean> => {
     try {
-      const updated = await api.put<Settings>('/settings', updates);
-      setSettings((prev) => ({ ...prev, ...updated }));
+      // Persist each updated path via /settings/path endpoint
+      // Only send entries that are explicitly set (not undefined)
+      const entries = Object.entries(updates).filter(([_, value]) => value !== undefined);
+      for (const [path, value] of entries) {
+        // Send the value as-is, including false, 0, empty string, null
+        await api.patch('/settings/path', { path, value });
+      }
+      // Refetch settings from server to ensure we have the latest data
+      await fetchSettings();
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update settings');
       return false;
     }
-  }, [api]);
+  }, [api, fetchSettings]);
 
   return {
     settings,

@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { reviewService } from '../services/ReviewService';
 import { mongo } from '../db/Mongo';
 import { ObjectId } from 'mongodb';
+import { settingsService } from '../services/SettingsService';
 
 const createReviewSchema = z.object({
   productId: z.string().min(1, 'Product ID is required'),
@@ -32,24 +33,53 @@ export class ReviewController {
         return;
       }
       
-      const productId = req.params.id;
+      const productIdentifier = req.params.id;
       const validated = createReviewSchema.parse({
         ...req.body,
-        productId,
+        productId: productIdentifier, // Will be updated below
       });
-      
-      // Verify product exists
-      const db = mongo.getDb();
-      const productsCollection = db.collection('products');
-      const product = await productsCollection.findOne({ _id: new ObjectId(productId) });
-      
-      if (!product) {
-        res.status(404).json({
+
+      // Check if reviews are enabled
+      const reviewsEnabled = await settingsService.isFeatureEnabled('reviews.enabled');
+      if (!reviewsEnabled) {
+        res.status(403).json({
           ok: false,
-          error: 'Product not found',
+          error: 'Reviews are currently disabled for this store',
         });
         return;
       }
+      
+      // Verify product exists and get product ID
+      const db = mongo.getDb();
+      const productsCollection = db.collection('products');
+      
+      let productId: string;
+      // Try to find by slug first (if it's not a valid ObjectId)
+      if (!ObjectId.isValid(productIdentifier)) {
+        const product = await productsCollection.findOne({ slug: productIdentifier });
+        if (!product) {
+          res.status(404).json({
+            ok: false,
+            error: 'Product not found',
+          });
+          return;
+        }
+        productId = product._id?.toString() || productIdentifier;
+      } else {
+        // It's a valid ObjectId, verify it exists
+        const product = await productsCollection.findOne({ _id: new ObjectId(productIdentifier) });
+        if (!product) {
+          res.status(404).json({
+            ok: false,
+            error: 'Product not found',
+          });
+          return;
+        }
+        productId = productIdentifier;
+      }
+      
+      // Check if moderation is required
+      const requireModeration = await settingsService.isFeatureEnabled('reviews.requireModeration');
       
       const review = await reviewService.createReview({
         productId,
@@ -57,6 +87,7 @@ export class ReviewController {
         rating: validated.rating,
         title: validated.title,
         comment: validated.comment,
+        status: requireModeration ? 'pending' : 'approved',
       });
       
       res.status(201).json({
@@ -92,14 +123,35 @@ export class ReviewController {
 
   /**
    * GET /api/products/:id/reviews
-   * Get reviews for a product
+   * Get reviews for a product (id can be product ID or slug)
    */
   static async getProductReviews(req: Request, res: Response): Promise<void> {
     try {
-      const productId = req.params.id;
+      const productIdentifier = req.params.id;
       const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
       const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+      
+      // Check if it's a slug or ID by trying to find product
+      const db = mongo.getDb();
+      const productsCollection = db.collection('products');
+      
+      let productId: string;
+      // Try to find by slug first (if it's not a valid ObjectId)
+      if (!ObjectId.isValid(productIdentifier)) {
+        const product = await productsCollection.findOne({ slug: productIdentifier });
+        if (!product) {
+          res.status(404).json({
+            ok: false,
+            error: 'Product not found',
+          });
+          return;
+        }
+        productId = product._id?.toString() || productIdentifier;
+      } else {
+        // It's a valid ObjectId, use it directly
+        productId = productIdentifier;
+      }
       
       const result = await reviewService.getProductReviews(productId, {
         status,
@@ -182,7 +234,7 @@ export class ReviewController {
 
   /**
    * GET /api/products/:id/reviews/user
-   * Get current user's review for a product
+   * Get current user's review for a product (id can be product ID or slug)
    */
   static async getUserReview(req: Request, res: Response): Promise<void> {
     try {
@@ -194,7 +246,29 @@ export class ReviewController {
         return;
       }
       
-      const productId = req.params.id;
+      const productIdentifier = req.params.id;
+      
+      // Check if it's a slug or ID by trying to find product
+      const db = mongo.getDb();
+      const productsCollection = db.collection('products');
+      
+      let productId: string;
+      // Try to find by slug first (if it's not a valid ObjectId)
+      if (!ObjectId.isValid(productIdentifier)) {
+        const product = await productsCollection.findOne({ slug: productIdentifier });
+        if (!product) {
+          res.status(404).json({
+            ok: false,
+            error: 'Product not found',
+          });
+          return;
+        }
+        productId = product._id?.toString() || productIdentifier;
+      } else {
+        // It's a valid ObjectId, use it directly
+        productId = productIdentifier;
+      }
+      
       const review = await reviewService.getUserReview(productId, req.userId);
       
       res.json({

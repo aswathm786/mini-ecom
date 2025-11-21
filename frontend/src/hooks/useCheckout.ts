@@ -51,6 +51,7 @@ interface CreateOrderData {
   shipping_address: Address;
   billing_address?: Address;
   shipping_method?: string;
+  shipping_cost?: number;
   payment_method: 'razorpay' | 'cod';
   coupon_code?: string;
 }
@@ -81,17 +82,22 @@ export function useCheckout(): UseCheckoutResult {
     setError(null);
 
     try {
-      const response = await csrfFetch('/api/checkout/create-order', {
+      let response = await csrfFetch('/api/checkout/create-order', {
         method: 'POST',
         body: JSON.stringify(data),
       });
 
+      // Handle CSRF error with retry
+      if (!response.ok && (response.code === 'CSRF_ERROR' || response.error?.includes('CSRF'))) {
+        await bootstrapCsrf();
+        // Retry the request with fresh CSRF token
+        response = await csrfFetch('/api/checkout/create-order', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      }
+
       if (!response.ok) {
-        // Handle CSRF error
-        if (response.code === 'CSRF_ERROR' || response.error?.includes('CSRF')) {
-          await bootstrapCsrf();
-          throw new Error('CSRF token expired. Please try again.');
-        }
         throw new Error(response.error || 'Failed to create order');
       }
 

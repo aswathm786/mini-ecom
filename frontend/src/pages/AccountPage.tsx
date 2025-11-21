@@ -16,9 +16,19 @@ import { TrackingPage } from './account/TrackingPage';
 import { TicketsPage } from './account/TicketsPage';
 import { TicketDetailsPage } from './account/TicketDetailsPage';
 import { SessionsPage } from './account/SessionsPage';
+import { TwoFactorSetupPage } from './account/TwoFactorSetupPage';
 
 export function AccountPage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Wait for auth state to load before checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center text-gray-600">
+        Loading...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login?return=/account" replace />;
@@ -36,6 +46,7 @@ export function AccountPage() {
       <Route path="tickets" element={<TicketsPage />} />
       <Route path="tickets/:id" element={<TicketDetailsPage />} />
       <Route path="sessions" element={<SessionsPage />} />
+      <Route path="security/2fa" element={<TwoFactorSetupPage />} />
     </Routes>
   );
 }

@@ -15,6 +15,7 @@ export interface Category {
   description?: string;
   parentId?: string;
   sortOrder: number;
+  image?: string;
   createdAt: Date;
 }
 

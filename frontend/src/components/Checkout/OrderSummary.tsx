@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import { useCart } from '../../hooks/useCart';
+import { useTaxShippingSettings } from '../../hooks/useTaxShippingSettings';
 import { formatCurrency } from '../../lib/format';
 import { Link } from 'react-router-dom';
 import { csrfFetch } from '../../lib/csrfFetch';
@@ -18,6 +19,7 @@ interface OrderSummaryProps {
 
 export function OrderSummary({ shippingCharge = 0, couponCode, onCouponApplied }: OrderSummaryProps) {
   const { items, subtotal } = useCart();
+  const { settings: taxShippingSettings } = useTaxShippingSettings();
   const [couponInput, setCouponInput] = useState(couponCode || '');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -25,7 +27,9 @@ export function OrderSummary({ shippingCharge = 0, couponCode, onCouponApplied }
     couponCode ? { code: couponCode, discount: 0 } : null
   );
 
-  const tax = subtotal * 0.18; // TODO: Get tax rate from config
+  // Use configured tax rate or default to 18%
+  const taxRate = taxShippingSettings?.taxRate || 18;
+  const tax = subtotal * (taxRate / 100);
   const discount = appliedCoupon?.discount || 0;
   const total = subtotal + shippingCharge + tax - discount;
 
@@ -38,7 +42,7 @@ export function OrderSummary({ shippingCharge = 0, couponCode, onCouponApplied }
     setCouponError(null);
 
     try {
-      const response = await csrfFetch('/api/cart/apply-coupon', {
+      const response = await csrfFetch('/api/coupons/validate', {
         method: 'POST',
         body: JSON.stringify({ code: couponInput.trim() }),
       });

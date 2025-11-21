@@ -13,6 +13,9 @@ import { razorpayService } from '../services/RazorpayService';
 import { mongo } from '../db/Mongo';
 import { AuditLog } from '../types';
 import { Config } from '../config/Config';
+import { settingsService } from '../services/SettingsService';
+import { platformSettingsService } from '../services/PlatformSettingsService';
+import { parsePagination, getPaginationMeta } from '../helpers/pagination';
 import * as crypto from 'crypto';
 
 const checkoutSchema = z.object({
@@ -35,6 +38,12 @@ const checkoutSchema = z.object({
     country: z.string().min(1),
     phone: z.string().optional(),
   }).optional(),
+  shipping_method: z.string().optional(),
+  shipping_cost: z.number().min(0).optional(),
+  email: z.string().email().optional(), // For guest checkout
+  couponCode: z.string().optional(),
+  loyaltyPoints: z.number().int().min(0).optional(),
+  giftWrap: z.boolean().optional(),
 });
 
 export class OrderController {
@@ -44,17 +53,32 @@ export class OrderController {
    */
   static async checkout(req: Request, res: Response): Promise<void> {
     try {
-      if (!req.userId) {
-        res.status(401).json({
-          ok: false,
-          error: 'Authentication required',
-        });
-        return;
-      }
-      
       const validated = checkoutSchema.parse(req.body);
       
-      // Get user's cart
+      // Check guest checkout feature flag
+      const guestCheckoutEnabled = await settingsService.isFeatureEnabled('checkout.guestEnabled');
+      
+      // If not authenticated, check if guest checkout is enabled
+      if (!req.userId) {
+        if (!guestCheckoutEnabled) {
+          res.status(401).json({
+            ok: false,
+            error: 'Authentication required',
+          });
+          return;
+        }
+        
+        // Guest checkout requires email
+        if (!validated.email) {
+          res.status(400).json({
+            ok: false,
+            error: 'Email is required for guest checkout',
+          });
+          return;
+        }
+      }
+      
+      // Get cart (use sessionId for guest checkout)
       const cart = await cartService.getCart(req.userId, req.sessionId);
       if (!cart || cart.items.length === 0) {
         res.status(400).json({
@@ -64,14 +88,81 @@ export class OrderController {
         return;
       }
       
+      const payments = await platformSettingsService.getSection('payments');
+      const paymentEnabled = payments.methods[validated.payment_method]?.enabled ?? false;
+      if (!paymentEnabled) {
+        res.status(400).json({
+          ok: false,
+          error: 'Selected payment method is not available right now. Please choose another option.',
+        });
+        return;
+      }
+
+      // Calculate discounts
+      let couponDiscount = 0;
+      let loyaltyDiscount = 0;
+      let loyaltyPointsRedeemed = 0;
+      
+      // Validate and apply coupon if provided
+      const couponsEnabled = await platformSettingsService.isFeatureEnabled('features.coupons.enabled');
+      if (couponsEnabled && validated.couponCode) {
+        const orderAmount = cart.items.reduce((sum, item) => sum + item.priceAt * item.qty, 0);
+        const orderItems = cart.items.map((item) => ({
+          productId: item.productId,
+          qty: item.qty,
+          price: item.priceAt,
+        }));
+        
+        const { couponService } = await import('../services/CouponService');
+        const couponResult = await couponService.validateCoupon(
+          validated.couponCode,
+          req.userId,
+          orderAmount,
+          orderItems
+        );
+        
+        if (couponResult.valid) {
+          couponDiscount = couponResult.discount;
+        }
+      }
+      
+      // Validate and apply loyalty points if provided
+      const loyaltyEnabled = await settingsService.isFeatureEnabled('loyalty.enabled');
+      if (loyaltyEnabled && validated.loyaltyPoints && validated.loyaltyPoints > 0 && req.userId) {
+        const orderAmount = cart.items.reduce((sum, item) => sum + item.priceAt * item.qty, 0);
+        const { loyaltyService } = await import('../services/LoyaltyService');
+        
+        try {
+          const loyaltyResult = await loyaltyService.redeemPoints(
+            req.userId,
+            '', // orderId will be set after order creation
+            orderAmount,
+            validated.loyaltyPoints
+          );
+          loyaltyDiscount = loyaltyResult.discountAmount;
+          loyaltyPointsRedeemed = validated.loyaltyPoints;
+        } catch (error) {
+          // If loyalty redemption fails, continue without it
+          console.warn('Loyalty redemption failed:', error);
+        }
+      }
+      
       // Create order
       const billingAddress = validated.billing_address || validated.shipping_address;
       const result = await orderService.createOrder(
-        req.userId,
+        req.userId || undefined, // Allow undefined for guest checkout
         cart,
         validated.shipping_address,
         billingAddress,
-        validated.payment_method
+        validated.payment_method,
+        {
+          email: validated.email,
+          couponCode: validated.couponCode,
+          couponDiscount,
+          loyaltyPointsRedeemed,
+          loyaltyDiscount,
+          giftWrap: validated.giftWrap || false,
+        }
       );
       
       // Log audit event
@@ -115,6 +206,47 @@ export class OrderController {
       res.status(500).json({
         ok: false,
         error: error instanceof Error ? error.message : 'Checkout failed',
+      });
+    }
+  }
+
+  /**
+   * GET /api/orders
+   * List user's orders
+   */
+  static async listOrders(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.userId) {
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+
+      const pagination = parsePagination(req.query);
+
+      const { orders, total } = await orderService.listOrders({
+        userId: req.userId,
+        status: req.query.status as string | undefined,
+        searchQuery: req.query.search as string | undefined,
+        ...pagination,
+      });
+      const meta = getPaginationMeta(pagination, total);
+
+      res.json({
+        ok: true,
+        data: {
+          items: orders,
+          total: meta.total,
+          pages: meta.pages,
+        },
+      });
+    } catch (error) {
+      console.error('Error listing orders:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to fetch orders',
       });
     }
   }
@@ -190,15 +322,40 @@ export class OrderController {
         return;
       }
       
+      // Get tax rate and shipping cost from settings
+      const taxShippingSettings = await platformSettingsService.getSection('taxShipping');
+      const taxRate = taxShippingSettings.taxRate || 18;
+      
+      // Use shipping cost from request if provided, otherwise use default from settings
+      const shippingCost = validated.shipping_cost !== undefined 
+        ? validated.shipping_cost 
+        : (validated.shipping_method ? taxShippingSettings.defaultShippingCost || 0 : 0);
+      
       // Create order (without payment for now)
       const billingAddress = validated.billing_address || validated.shipping_address;
+      console.log('DEBUG createOrder:', {
+        userId: req.userId,
+        hasCart: !!cart,
+        cartItemsCount: cart.items.length
+      });
+      
       const result = await orderService.createOrderWithoutPayment(
         req.userId,
         cart,
         validated.shipping_address,
         billingAddress,
-        validated.payment_method
+        validated.payment_method,
+        {
+          shippingMethod: validated.shipping_method,
+          shippingCost,
+          taxRate,
+        }
       );
+      
+      console.log('DEBUG order created:', {
+        orderId: result.order._id,
+        orderUserId: result.order.userId
+      });
       
       // Log audit event
       await OrderController.logAudit({
@@ -485,6 +642,116 @@ export class OrderController {
       res.status(500).json({
         ok: false,
         error: error instanceof Error ? error.message : 'Failed to confirm payment',
+      });
+    }
+  }
+
+  /**
+   * GET /api/orders/:id/invoice
+   * Download invoice for an order (user can only download their own invoices)
+   */
+  static async downloadInvoice(req: Request, res: Response): Promise<void> {
+    try {
+      const orderId = req.params.id;
+      const userId = req.userId;
+
+      console.log('DEBUG downloadInvoice:', {
+        orderId,
+        userId,
+        hasUserId: !!userId
+      });
+
+      if (!userId) {
+        console.log('No userId in request');
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+
+      // Verify user owns the order
+      const order = await orderService.getOrderById(orderId, userId);
+      console.log('DEBUG order lookup:', {
+        orderFound: !!order,
+        orderUserId: order?.userId,
+        requestUserId: userId,
+        match: order?.userId === userId
+      });
+      
+      if (!order) {
+        res.status(404).json({
+          ok: false,
+          error: 'Order not found or access denied',
+        });
+        return;
+      }
+
+      // Get invoice
+      const { invoiceService } = await import('../services/InvoiceService');
+      let invoice = await invoiceService.getInvoiceByOrderId(orderId);
+      
+      console.log('DEBUG invoice lookup:', {
+        invoiceFound: !!invoice,
+        invoiceId: invoice?._id,
+        hasPdfPath: !!invoice?.pdfPath
+      });
+
+      // If invoice doesn't exist OR has no PDF, (re)generate it
+      if (!invoice || !invoice.pdfPath) {
+        if (invoice && !invoice.pdfPath) {
+          console.log('Invoice exists but has no PDF. Deleting and regenerating...');
+          // Delete the broken invoice so we can regenerate it properly
+          await invoiceService.deleteInvoice(invoice._id as string);
+        }
+        
+        console.log('Generating invoice for order:', orderId);
+        invoice = await invoiceService.generateInvoice(orderId, 'manual');
+        console.log('Invoice generated:', {
+          invoiceId: invoice?._id,
+          hasPdfPath: !!invoice?.pdfPath,
+          pdfPath: invoice?.pdfPath
+        });
+      }
+
+      if (!invoice.pdfPath) {
+        console.log('Invoice STILL has no pdfPath after generation:', invoice);
+        res.status(500).json({
+          ok: false,
+          error: 'Invoice PDF generation failed. Puppeteer may not be properly installed.',
+        });
+        return;
+      }
+
+      const fs = require('fs');
+      const path = require('path');
+      
+      console.log('Checking PDF file existence:', {
+        pdfPath: invoice.pdfPath,
+        exists: fs.existsSync(invoice.pdfPath)
+      });
+
+      if (!fs.existsSync(invoice.pdfPath)) {
+        console.log('PDF file does not exist at path:', invoice.pdfPath);
+        res.status(404).json({
+          ok: false,
+          error: 'Invoice PDF file not found',
+        });
+        return;
+      }
+      
+      console.log('PDF file found, sending response');
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoiceNumber}.pdf"`);
+      res.sendFile(path.resolve(invoice.pdfPath));
+    } catch (error) {
+      console.error('Error downloading invoice:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to download invoice',
+        details: error instanceof Error ? error.message : String(error),
       });
     }
   }

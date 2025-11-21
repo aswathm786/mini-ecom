@@ -4,20 +4,23 @@
  * Displays product details, gallery, and add-to-cart functionality.
  */
 
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { csrfFetch } from '../lib/csrfFetch';
 import { useCart } from '../hooks/useCart';
+import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../lib/format';
 import { ProductGallery } from '../components/ProductGallery';
 import { QtyInput } from '../components/QtyInput';
 import { Button } from '../components/Button';
-import { CartSummary } from '../components/CartSummary';
 import { Product } from '../hooks/useProducts';
 import { ToastContainer } from '../components/Toast';
+import { ReviewSection } from '../components/ReviewSection';
 
 export function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,15 +63,32 @@ export function ProductPage() {
   };
 
   const handleAddToCart = async () => {
-    if (!product) return;
+    if (!product || !product._id) return;
+
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      // Redirect to login with current product page as redirect parameter
+      const currentPath = `/product/${slug}`;
+      navigate(`/login?redirect=${encodeURIComponent(currentPath)}`);
+      return;
+    }
 
     setIsAdding(true);
     try {
-      await addItem(product._id, quantity);
+      // Ensure productId is a string
+      const productId = typeof product._id === 'string' ? product._id : String(product._id);
+      await addItem(productId, quantity);
       addToast(`${product.name} added to cart`, 'success');
       setQuantity(1); // Reset quantity after adding
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to add to cart', 'error');
+      console.error('Error adding to cart:', err);
+      // If error is due to authentication, redirect to login
+      if (err instanceof Error && (err.message.includes('Authentication') || err.message.includes('401'))) {
+        const currentPath = `/product/${slug}`;
+        navigate(`/login?redirect=${encodeURIComponent(currentPath)}`);
+      } else {
+        addToast(err instanceof Error ? err.message : 'Failed to add to cart', 'error');
+      }
     } finally {
       setIsAdding(false);
     }
@@ -106,80 +126,76 @@ export function ProductPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Product Details */}
-        <div className="lg:col-span-2">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            {/* Gallery */}
-            <div>
-              <ProductGallery images={product.images} productName={product.name} />
-            </div>
-
-            {/* Product Info */}
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">{product.name}</h1>
-              
-              <div className="mb-4">
-                <span className="text-3xl font-bold text-gray-900">
-                  {formatCurrency(product.price)}
-                </span>
-              </div>
-
-              {isInStock ? (
-                <div className="mb-4">
-                  <span className="inline-block px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded">
-                    In Stock ({product.inventory.qty} available)
-                  </span>
-                </div>
-              ) : (
-                <div className="mb-4">
-                  <span className="inline-block px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded">
-                    Out of Stock
-                  </span>
-                </div>
-              )}
-
-              <div className="mb-6">
-                <p className="text-gray-700 whitespace-pre-line">{product.description}</p>
-              </div>
-
-              {/* Add to Cart */}
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-2">
-                    Quantity
-                  </label>
-                  <QtyInput
-                    value={quantity}
-                    onChange={setQuantity}
-                    min={1}
-                    max={maxQty}
-                    disabled={!isInStock}
-                  />
-                </div>
-
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={handleAddToCart}
-                  disabled={!isInStock || isAdding}
-                  isLoading={isAdding}
-                >
-                  {isInStock ? 'Add to Cart' : 'Out of Stock'}
-                </Button>
-              </div>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        {/* Gallery */}
+        <div>
+          <ProductGallery images={product.images} productName={product.name} />
         </div>
 
-        {/* Cart Summary Sidebar */}
-        <div className="lg:col-span-1">
-          <div className="lg:sticky lg:top-4">
-            <CartSummary />
+        {/* Product Info */}
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">{product.name}</h1>
+          
+          <div className="mb-4">
+            <span className="text-3xl font-bold text-gray-900">
+              {formatCurrency(product.price)}
+            </span>
+          </div>
+
+          {isInStock ? (
+            <div className="mb-4">
+              <span className="inline-block px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded">
+                In Stock ({product.inventory.qty} available)
+              </span>
+            </div>
+          ) : (
+            <div className="mb-4">
+              <span className="inline-block px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded">
+                Out of Stock
+              </span>
+            </div>
+          )}
+
+          <div className="mb-6">
+            <p className="text-gray-700 whitespace-pre-line">{product.description}</p>
+          </div>
+
+          {/* Add to Cart */}
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-2">
+                Quantity
+              </label>
+              <QtyInput
+                value={quantity}
+                onChange={setQuantity}
+                min={1}
+                max={maxQty}
+                disabled={!isInStock}
+              />
+            </div>
+
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={handleAddToCart}
+              disabled={!isInStock || isAdding}
+              isLoading={isAdding}
+            >
+              {isInStock ? 'Add to Cart' : 'Out of Stock'}
+            </Button>
           </div>
         </div>
       </div>
+
+      {/* Reviews Section */}
+      {product._id && (
+        <ReviewSection
+          productId={typeof product._id === 'string' ? product._id : String(product._id)}
+          productSlug={product.slug}
+        />
+      )}
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>

@@ -14,6 +14,14 @@ import { sanitizeHtmlContent } from '../helpers/sanitize';
 import { render } from 'mustache';
 import { parsePagination, getPaginationMeta } from '../helpers/pagination';
 
+const createTemplateSchema = z.object({
+  name: z.string().min(1),
+  eventType: z.string().min(1),
+  subject: z.string().min(1),
+  body: z.string().min(1),
+  isProtected: z.boolean().optional(),
+});
+
 const updateTemplateSchema = z.object({
   name: z.string().min(1).optional(),
   subject: z.string().min(1).optional(),
@@ -75,6 +83,58 @@ export class AdminEmailController {
       res.status(500).json({
         ok: false,
         error: 'Failed to fetch template',
+      });
+    }
+  }
+
+  /**
+   * POST /api/admin/email-templates
+   * Create a new template
+   */
+  static async createTemplate(req: Request, res: Response): Promise<void> {
+    try {
+      const validated = createTemplateSchema.parse(req.body);
+      
+      // Check if eventType already exists
+      const existing = await emailTemplateService.getTemplateByEventType(validated.eventType);
+      if (existing) {
+        res.status(400).json({
+          ok: false,
+          error: 'Template with this event type already exists',
+        });
+        return;
+      }
+      
+      // Sanitize HTML content
+      const templateData = {
+        name: validated.name,
+        eventType: validated.eventType,
+        subject: validated.subject,
+        body: sanitizeHtmlContent(validated.body),
+        isProtected: validated.isProtected || false,
+      };
+      
+      const template = await emailTemplateService.createTemplate(templateData);
+      
+      res.status(201).json({
+        ok: true,
+        message: 'Template created',
+        data: template,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({
+          ok: false,
+          error: 'Validation failed',
+          details: error.errors,
+        });
+        return;
+      }
+      
+      console.error('Error creating template:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to create template',
       });
     }
   }
@@ -249,6 +309,55 @@ export class AdminEmailController {
       res.status(500).json({
         ok: false,
         error: 'Failed to initiate broadcast',
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/admin/email-templates/:id
+   * Delete a template
+   */
+  static async deleteTemplate(req: Request, res: Response): Promise<void> {
+    try {
+      const templateId = req.params.id;
+      
+      const template = await emailTemplateService.getTemplateById(templateId);
+      if (!template) {
+        res.status(404).json({
+          ok: false,
+          error: 'Template not found',
+        });
+        return;
+      }
+      
+      // Prevent deletion of protected templates
+      if (template.isProtected) {
+        res.status(400).json({
+          ok: false,
+          error: 'Cannot delete protected template',
+        });
+        return;
+      }
+      
+      const success = await emailTemplateService.deleteTemplate(templateId);
+      
+      if (!success) {
+        res.status(404).json({
+          ok: false,
+          error: 'Template not found',
+        });
+        return;
+      }
+      
+      res.json({
+        ok: true,
+        message: 'Template deleted successfully',
+      });
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to delete template',
       });
     }
   }

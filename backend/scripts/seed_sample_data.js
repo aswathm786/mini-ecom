@@ -6,6 +6,10 @@
  */
 
 const { MongoClient } = require('mongodb');
+const path = require('path');
+
+// Load environment variables from root .env
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://admin:changeme@localhost:27017/miniecom?authSource=admin';
 

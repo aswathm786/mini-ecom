@@ -7,6 +7,7 @@
 
 import * as https from 'https';
 import { Config } from '../config/Config';
+import { platformSettingsService } from './PlatformSettingsService';
 
 export interface RazorpayOrder {
   id: string;
@@ -37,6 +38,22 @@ export interface RazorpayRefund {
 }
 
 class RazorpayService {
+  /**
+   * Check if Razorpay is enabled
+   */
+  private async isEnabled(): Promise<boolean> {
+    try {
+      const settings = await platformSettingsService.getSettings();
+      const payments = (settings as any).payments;
+      if (payments && payments.methods && payments.methods.razorpay) {
+        return payments.methods.razorpay.enabled === true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   private getKeyId(): string {
     return Config.get('RAZORPAY_KEY_ID', '');
   }
@@ -60,11 +77,17 @@ class RazorpayService {
     path: string,
     data?: any
   ): Promise<any> {
+    // Check if Razorpay is enabled
+    const isEnabled = await this.isEnabled();
+    if (!isEnabled) {
+      throw new Error('Razorpay is not enabled. Please enable it in admin settings.');
+    }
+
     const keyId = this.getKeyId();
     const keySecret = this.getKeySecret();
     
     if (!keyId || !keySecret) {
-      throw new Error('Razorpay credentials not configured');
+      throw new Error('Razorpay credentials not configured. Please add Key ID and Key Secret in admin settings.');
     }
     
     const baseUrl = this.getBaseUrl();
@@ -207,6 +230,79 @@ class RazorpayService {
   async getRefunds(paymentId: string): Promise<RazorpayRefund[]> {
     const response = await this.makeRequest('GET', `/payments/${paymentId}/refund`);
     return response.items || [];
+  }
+
+  /**
+   * Test Razorpay credentials by creating a minimal test order
+   * This verifies that the key_id and key_secret are valid
+   */
+  async testCredentials(keyId: string, keySecret: string): Promise<boolean> {
+    try {
+      const baseUrl = 'https://api.razorpay.com/v1';
+      const url = `${baseUrl}/orders`;
+      const urlObj = new URL(url);
+      
+      const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+      
+      const testOrderData = {
+        amount: 100, // 1 rupee in paise (minimum amount)
+        currency: 'INR',
+        receipt: `test_${Date.now()}`,
+        notes: {
+          test: true,
+        },
+      };
+      
+      const postData = JSON.stringify(testOrderData);
+      
+      return new Promise((resolve, reject) => {
+        const options = {
+          hostname: urlObj.hostname,
+          port: 443,
+          path: urlObj.pathname,
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData),
+            'User-Agent': 'HandmadeHarmony/1.0',
+          },
+        };
+        
+        const req = https.request(options, (res) => {
+          let responseData = '';
+          
+          res.on('data', (chunk) => {
+            responseData += chunk;
+          });
+          
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(responseData);
+              
+              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                // Order created successfully, credentials are valid
+                resolve(true);
+              } else {
+                // Invalid credentials or other error
+                resolve(false);
+              }
+            } catch (error) {
+              resolve(false);
+            }
+          });
+        });
+        
+        req.on('error', () => {
+          resolve(false);
+        });
+        
+        req.write(postData);
+        req.end();
+      });
+    } catch (error) {
+      return false;
+    }
   }
 }
 

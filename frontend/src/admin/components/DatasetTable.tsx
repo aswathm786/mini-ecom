@@ -12,13 +12,13 @@ interface Column<T> {
 }
 
 interface DatasetTableProps<T> {
-  data: T[];
+  data?: T[];
   columns: Column<T>[];
   loading?: boolean;
-  page: number;
-  pages: number;
-  total: number;
-  onPageChange: (page: number) => void;
+  page?: number;
+  pages?: number;
+  total?: number;
+  onPageChange?: (page: number) => void;
   onSort?: (key: string, direction: 'asc' | 'desc') => void;
   sortKey?: string;
   sortDirection?: 'asc' | 'desc';
@@ -31,8 +31,8 @@ export function DatasetTable<T extends Record<string, any>>({
   data,
   columns,
   loading = false,
-  page,
-  pages,
+  page = 1,
+  pages = 1,
   total,
   onPageChange,
   onSort,
@@ -42,6 +42,11 @@ export function DatasetTable<T extends Record<string, any>>({
   rowKey = (item) => item._id || item.id,
   onRowClick,
 }: DatasetTableProps<T>) {
+  const safeData = Array.isArray(data) ? data : [];
+  const safePage = page > 0 ? page : 1;
+  const safePages = pages > 0 ? pages : 1;
+  const safeTotal = typeof total === 'number' ? total : safeData.length;
+
   const handleSort = (key: string) => {
     if (!onSort) return;
     const direction = sortKey === key && sortDirection === 'asc' ? 'desc' : 'asc';
@@ -88,16 +93,18 @@ export function DatasetTable<T extends Record<string, any>>({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {data.length === 0 ? (
+            {safeData.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-6 py-8 text-center text-gray-500">
                   {emptyMessage}
                 </td>
               </tr>
             ) : (
-              data.map((item) => (
+              safeData.map((item, index) => {
+                const key = rowKey(item) || `row-${index}`;
+                return (
                 <tr
-                  key={rowKey(item)}
+                    key={key}
                   onClick={() => onRowClick?.(item)}
                   className={onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''}
                 >
@@ -107,26 +114,27 @@ export function DatasetTable<T extends Record<string, any>>({
                     </td>
                   ))}
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
       {/* Pagination */}
-      {pages > 1 && (
+      {safePages > 1 && onPageChange && (
         <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
           <div className="flex-1 flex justify-between sm:hidden">
             <button
-              onClick={() => onPageChange(page - 1)}
-              disabled={page === 1}
+              onClick={() => onPageChange(safePage - 1)}
+              disabled={safePage === 1}
               className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
             <button
-              onClick={() => onPageChange(page + 1)}
-              disabled={page === pages}
+              onClick={() => onPageChange(safePage + 1)}
+              disabled={safePage === safePages}
               className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
@@ -135,37 +143,37 @@ export function DatasetTable<T extends Record<string, any>>({
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-gray-700">
-                Showing <span className="font-medium">{(page - 1) * 20 + 1}</span> to{' '}
-                <span className="font-medium">{Math.min(page * 20, total)}</span> of{' '}
-                <span className="font-medium">{total}</span> results
+                Showing <span className="font-medium">{(safePage - 1) * 20 + 1}</span> to{' '}
+                <span className="font-medium">{Math.min(safePage * 20, safeTotal)}</span> of{' '}
+                <span className="font-medium">{safeTotal}</span> results
               </p>
             </div>
             <div>
               <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                 <button
-                  onClick={() => onPageChange(page - 1)}
-                  disabled={page === 1}
+                  onClick={() => onPageChange(safePage - 1)}
+                  disabled={safePage === 1}
                   className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
-                {Array.from({ length: Math.min(pages, 5) }, (_, i) => {
+                {Array.from({ length: Math.min(safePages, 5) }, (_, i) => {
                   let pageNum;
-                  if (pages <= 5) {
+                  if (safePages <= 5) {
                     pageNum = i + 1;
-                  } else if (page <= 3) {
+                  } else if (safePage <= 3) {
                     pageNum = i + 1;
-                  } else if (page >= pages - 2) {
-                    pageNum = pages - 4 + i;
+                  } else if (safePage >= safePages - 2) {
+                    pageNum = safePages - 4 + i;
                   } else {
-                    pageNum = page - 2 + i;
+                    pageNum = safePage - 2 + i;
                   }
                   return (
                     <button
                       key={pageNum}
                       onClick={() => onPageChange(pageNum)}
                       className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                        page === pageNum
+                        safePage === pageNum
                           ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
                           : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
                       }`}
@@ -175,8 +183,8 @@ export function DatasetTable<T extends Record<string, any>>({
                   );
                 })}
                 <button
-                  onClick={() => onPageChange(page + 1)}
-                  disabled={page === pages}
+                  onClick={() => onPageChange(safePage + 1)}
+                  disabled={safePage === safePages}
                   className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next

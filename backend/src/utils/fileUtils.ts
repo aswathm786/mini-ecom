@@ -72,6 +72,7 @@ export function deleteFile(filePath: string): boolean {
 export function getFileUrl(filename: string, subdirectory?: string): string {
   const apiUrl = Config.API_URL;
   const pathSegment = subdirectory ? `/${subdirectory}` : '';
-  return `${apiUrl}/uploads${pathSegment}/${filename}`;
+  // Route is /api/uploads/:filename (or /api/uploads/:subdirectory/:filename)
+  return `${apiUrl}/api/uploads${pathSegment}/${filename}`;
 }
 

@@ -14,7 +14,8 @@ import { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
 import { Config } from '../config/Config';
 import { mongo } from '../db/Mongo';
-import { Session } from '../types';
+import { Session, JWTPayload } from '../types';
+import * as jwt from 'jsonwebtoken';
 
 /**
  * Generate a random CSRF token
@@ -32,6 +33,17 @@ function getSessionId(req: Request): string | null {
   if (req.sessionId) {
     return req.sessionId;
   }
+
+  // Try to derive session ID from JWT cookie (for authenticated fetches before requireAuth runs)
+  const cookieToken = req.cookies?.sessionToken;
+  if (cookieToken) {
+    try {
+      const payload = jwt.verify(cookieToken, Config.JWT_SECRET) as JWTPayload;
+      return payload.sessionId;
+    } catch (error) {
+      console.warn('CSRF middleware: failed to decode sessionToken cookie', error);
+    }
+  }
   
   // For unauthenticated requests, we can't reliably track sessions
   // This should only be used for public endpoints that don't require auth
@@ -44,49 +56,62 @@ function getSessionId(req: Request): string | null {
  * Returns token in both cookie and JSON response
  */
 export async function csrfTokenHandler(req: Request, res: Response): Promise<void> {
-  const sessionId = getSessionId(req);
-  
-  if (!sessionId) {
-    // For unauthenticated requests, we can still generate a token but it won't be persisted
-    // This is acceptable for public endpoints
+  try {
+    const sessionId = getSessionId(req);
+    
+    // Generate token (always generate, even if we can't store it)
     const token = generateToken();
+    
+    // Try to store token in session if sessionId exists and MongoDB is available
+    if (sessionId) {
+      try {
+        const db = mongo.getDb();
+        const sessionsCollection = db.collection<Session>('sessions');
+        
+        await sessionsCollection.updateOne(
+          { token: sessionId },
+          { $set: { csrfToken: token } }
+        );
+      } catch (error) {
+        // If MongoDB isn't available, log warning but continue
+        // Token will still be returned in cookie and response
+        console.warn('Could not store CSRF token in session (MongoDB unavailable):', error);
+      }
+    }
+    
+    // Set token in HttpOnly cookie (always set, even if storage failed)
     res.cookie('csrf-token', token, {
       httpOnly: true,
       secure: Config.COOKIE_SECURE,
       sameSite: Config.COOKIE_SAME_SITE,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     });
+    
+    // Return token in response (for SPA to read and put in meta tag)
     res.json({ token });
-    return;
+  } catch (error) {
+    console.error('Error generating CSRF token:', error);
+    // Even on error, try to return a token so the app can continue
+    const fallbackToken = generateToken();
+    res.cookie('csrf-token', fallbackToken, {
+      httpOnly: true,
+      secure: Config.COOKIE_SECURE,
+      sameSite: Config.COOKIE_SAME_SITE,
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    res.json({ token: fallbackToken });
   }
-  
-  // Generate new token
-  const token = generateToken();
-  
-  // Store token in session document
-  const db = mongo.getDb();
-  const sessionsCollection = db.collection<Session>('sessions');
-  
-  await sessionsCollection.updateOne(
-    { token: sessionId },
-    { $set: { csrfToken: token } }
-  );
-  
-  // Set token in HttpOnly cookie
-  res.cookie('csrf-token', token, {
-    httpOnly: true,
-    secure: Config.COOKIE_SECURE,
-    sameSite: Config.COOKIE_SAME_SITE,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-  });
-  
-  // Return token in response (for SPA to read and put in meta tag)
-  res.json({ token });
 }
 
 /**
  * CSRF verification middleware
- * Verifies X-CSRF-Token header matches the token stored for this session
+ * Verifies X-CSRF-Token header matches the token stored in session or cookie
+ * 
+ * For authenticated users: checks token in session document
+ * For unauthenticated users: checks token in cookie (for public endpoints like register/login)
+ * 
+ * For login endpoints: More lenient - allows request to proceed even if CSRF fails,
+ * so that blocked user errors can be shown instead of CSRF errors
  */
 export async function csrfProtection(req: Request, res: Response, next: NextFunction): Promise<void> {
   // Skip CSRF for GET, HEAD, OPTIONS requests
@@ -94,34 +119,125 @@ export async function csrfProtection(req: Request, res: Response, next: NextFunc
     return next();
   }
   
+  const isLoginEndpoint = req.path === '/auth/login' || req.path.endsWith('/auth/login');
+  const isGoogleLoginEndpoint = req.path === '/auth/google' || req.path.endsWith('/auth/google');
+  const isAuthEndpoint = isLoginEndpoint || isGoogleLoginEndpoint;
   const sessionId = getSessionId(req);
   const providedToken = req.headers['x-csrf-token'] as string;
   
-  if (!sessionId) {
-    // For unauthenticated requests, we can't verify CSRF tokens reliably
-    // This should only happen for public endpoints
-    // For authenticated endpoints, sessionId should always be available
-    return res.status(403).json({
-      error: 'CSRF token verification requires authentication',
+  if (!providedToken) {
+    console.warn('CSRF protection: Missing X-CSRF-Token header', {
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
     });
+    
+    // For login endpoints, allow request to proceed so blocked user check can happen
+    if (isAuthEndpoint) {
+      console.warn('CSRF protection: Allowing auth request without token to check user status');
+      return next();
+    }
+    
+    res.status(403).json({
+      ok: false,
+      error: 'CSRF token is required. Please include X-CSRF-Token header.',
+    });
+    return;
   }
   
-  // Get stored token from session document
-  const db = mongo.getDb();
-  const sessionsCollection = db.collection<Session & { csrfToken?: string }>('sessions');
+  // For authenticated users, verify against session
+  if (sessionId) {
+    try {
+      const db = mongo.getDb();
+      const sessionsCollection = db.collection<Session & { csrfToken?: string }>('sessions');
+      
+      const session = await sessionsCollection.findOne({ token: sessionId });
+      
+      if (!session || !session.csrfToken) {
+        // For auth endpoints, allow request to proceed
+        if (isAuthEndpoint) {
+          console.warn('CSRF protection: Allowing auth request without session token to check user status');
+          return next();
+        }
+        
+        res.status(403).json({
+          ok: false,
+          error: 'CSRF token not found. Please request a new token from /api/csrf-token',
+        });
+        return;
+      }
+      
+      // Verify token matches
+      if (providedToken !== session.csrfToken) {
+        console.warn('CSRF protection: Token mismatch for authenticated user', {
+          userId: session.userId,
+          path: req.path,
+          ip: req.ip,
+        });
+        
+        // For auth endpoints, allow request to proceed
+        if (isAuthEndpoint) {
+          console.warn('CSRF protection: Allowing auth request with mismatched token to check user status');
+          return next();
+        }
+        
+        res.status(403).json({
+          ok: false,
+          error: 'Invalid CSRF token',
+        });
+        return;
+      }
+      
+      // Token is valid, continue
+      return next();
+    } catch (error) {
+      console.error('Error verifying CSRF token from session:', error);
+      // Fall through to cookie-based verification
+    }
+  }
   
-  const session = await sessionsCollection.findOne({ token: sessionId });
+  // For unauthenticated users (public endpoints), verify against cookie
+  const cookieToken = req.cookies?.['csrf-token'];
   
-  if (!session || !session.csrfToken) {
-    return res.status(403).json({
+  if (!cookieToken) {
+    // For auth endpoints, allow request to proceed so blocked user check can happen
+    if (isAuthEndpoint) {
+      console.warn('CSRF protection: Allowing auth request without cookie token to check user status');
+      return next();
+    }
+    
+    res.status(403).json({
+      ok: false,
       error: 'CSRF token not found. Please request a new token from /api/csrf-token',
     });
+    return;
   }
   
-  // Verify token matches
-  if (!providedToken || providedToken !== session.csrfToken) {
-    return res.status(403).json({
-      error: 'Invalid CSRF token',
+  // Verify token from cookie matches provided token
+  if (providedToken !== cookieToken) {
+    console.warn('CSRF protection: Token mismatch for unauthenticated user', {
+      path: req.path,
+      ip: req.ip,
+    });
+    
+    // For auth endpoints, allow request to proceed so blocked user check can happen
+    if (isAuthEndpoint) {
+      console.warn('CSRF protection: Allowing auth request with mismatched cookie token to check user status');
+      return next();
+    }
+    
+    res.status(403).json({
+      ok: false,
+      error: 'Invalid CSRF token. Please request a new token from /api/csrf-token',
+    });
+    return;
+  }
+  
+  // Log successful CSRF verification for unauthenticated requests (for debugging)
+  if (Config.NODE_ENV === 'development') {
+    console.log('CSRF protection: Token verified for unauthenticated request', {
+      path: req.path,
+      method: req.method,
     });
   }
   

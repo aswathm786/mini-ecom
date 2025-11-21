@@ -19,16 +19,41 @@ const themeSettingsSchema = z.object({
   'theme.text': z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   'theme.textLight': z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   
-  // Branding
-  'theme.logo': z.string().url().optional(),
-  'theme.favicon': z.string().url().optional(),
+  // Branding - allow null, empty string, or URL (including relative paths starting with /)
+  'theme.logo': z.union([
+    z.string().url(), 
+    z.string().startsWith('/'), 
+    z.string().length(0), 
+    z.null()
+  ]).optional(),
+  'theme.favicon': z.union([
+    z.string().url(), 
+    z.string().startsWith('/'), 
+    z.string().length(0), 
+    z.null()
+  ]).optional(),
   'theme.siteName': z.string().optional(),
   'theme.siteTagline': z.string().optional(),
   
-  // Images
-  'theme.heroImage': z.string().url().optional(),
-  'theme.aboutImage': z.string().url().optional(),
-  'theme.footerImage': z.string().url().optional(),
+  // Images - allow null, empty string, or URL (including relative paths starting with /)
+  'theme.heroImage': z.union([
+    z.string().url(), 
+    z.string().startsWith('/'), 
+    z.string().length(0), 
+    z.null()
+  ]).optional(),
+  'theme.aboutImage': z.union([
+    z.string().url(), 
+    z.string().startsWith('/'), 
+    z.string().length(0), 
+    z.null()
+  ]).optional(),
+  'theme.footerImage': z.union([
+    z.string().url(), 
+    z.string().startsWith('/'), 
+    z.string().length(0), 
+    z.null()
+  ]).optional(),
   
   // Layout
   'theme.headerStyle': z.enum(['default', 'centered', 'minimal']).optional(),
@@ -60,11 +85,25 @@ export class ThemeSettingsController {
         .find({ key: { $regex: /^theme\./ } })
         .toArray();
       
+      // Also get site.name and store.name for display purposes
+      const siteNameSetting = await settingsCollection.findOne({ key: 'site.name' });
+      const storeNameSetting = await settingsCollection.findOne({ key: 'store.name' });
+      
       // Convert to object
       const settings: Record<string, any> = {};
       themeSettings.forEach(setting => {
         settings[setting.key] = setting.value;
       });
+      
+      // Include site.name if available (takes priority for display)
+      if (siteNameSetting) {
+        settings['site.name'] = siteNameSetting.value;
+      }
+      
+      // Include store.name if available (fallback)
+      if (storeNameSetting) {
+        settings['store.name'] = storeNameSetting.value;
+      }
       
       // Set defaults if not present
       const defaults = {
@@ -116,24 +155,40 @@ export class ThemeSettingsController {
       const db = mongo.getDb();
       const settingsCollection = db.collection('settings');
       
-      // Update each setting
-      const updates = Object.entries(validated).map(([key, value]) => ({
-        updateOne: {
-          filter: { key },
-          update: {
-            $set: {
-              key,
-              value,
-              type: 'string',
-              description: `Theme setting: ${key}`,
-              updatedAt: new Date(),
-              updatedBy: req.userId,
-            },
-          },
-          upsert: true,
-        },
-      }));
+      // Separate updates and deletions
+      const updates: any[] = [];
+      const deletions: string[] = [];
       
+      Object.entries(validated).forEach(([key, value]) => {
+        // If value is null, empty string, or undefined, delete the setting
+        if (value === null || value === '' || value === undefined) {
+          deletions.push(key);
+        } else {
+          updates.push({
+            updateOne: {
+              filter: { key },
+              update: {
+                $set: {
+                  key,
+                  value,
+                  type: 'string',
+                  description: `Theme setting: ${key}`,
+                  updatedAt: new Date(),
+                  updatedBy: req.userId,
+                },
+              },
+              upsert: true,
+            },
+          });
+        }
+      });
+      
+      // Perform deletions
+      if (deletions.length > 0) {
+        await settingsCollection.deleteMany({ key: { $in: deletions } });
+      }
+      
+      // Perform updates
       if (updates.length > 0) {
         await settingsCollection.bulkWrite(updates);
       }
@@ -226,13 +281,17 @@ export class ThemeSettingsController {
         return;
       }
       
-      const { imageType } = req.body; // heroImage, aboutImage, footerImage
+      // Get imageType from req.body (multer parses form data fields)
+      const imageType = req.body?.imageType || req.body?.imageType?.[0]; // Handle both string and array
       const file = req.file;
+      
+      console.log('Upload image - imageType:', imageType, 'file:', file?.filename);
       
       if (!file || !imageType) {
         res.status(400).json({
           ok: false,
           error: 'Missing file or image type',
+          debug: { hasFile: !!file, imageType, body: req.body },
         });
         return;
       }
@@ -241,13 +300,15 @@ export class ThemeSettingsController {
       if (!validTypes.includes(imageType)) {
         res.status(400).json({
           ok: false,
-          error: 'Invalid image type',
+          error: `Invalid image type: ${imageType}. Must be one of: ${validTypes.join(', ')}`,
         });
         return;
       }
       
       const imageUrl = `/api/uploads/${file.filename}`;
       const settingKey = `theme.${imageType}`;
+      
+      console.log('Saving image with key:', settingKey, 'URL:', imageUrl);
       
       await settingsService.setSetting(
         settingKey,

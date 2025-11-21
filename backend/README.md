@@ -61,7 +61,7 @@ Ensure `.env` file exists in the project root (copy from `.env.example`). Requir
 - `JWT_SECRET`: Secret for JWT signing (min 32 characters)
 - `CSRF_SECRET`: Secret for CSRF token generation
 - `SESSION_SECRET`: Secret for session management
-- `PORT`: Server port (default: 3000)
+- `PORT`: Server port (default: 3001)
 
 ### Development
 
@@ -71,7 +71,7 @@ Ensure `.env` file exists in the project root (copy from `.env.example`). Requir
 npm run dev
 ```
 
-Server runs on `http://localhost:3000` (or port from `PORT` env var).
+Server runs on `http://localhost:3001` (or port from `PORT` env var).
 
 The server will:
 1. Connect to MongoDB
@@ -203,7 +203,20 @@ npm test
 
 Logs are written to `./logs` directory. Log levels: `error`, `warn`, `info`, `debug`.
 
+## 📚 Documentation
+
+For complete documentation, see:
+
+- **[Getting Started](../docs/getting-started/README.md)** - Quick start guide
+- **[Installation](../docs/getting-started/installation.md)** - Detailed setup
+- **[Configuration](../docs/getting-started/configuration.md)** - Environment variables
+- **[Deployment](../docs/deployment/README.md)** - Production deployment
+- **[Developer Guide](../docs/developer/README.md)** - Development documentation
+- **[API Reference](../docs/developer/api-reference.md)** - API documentation
+- **[Scripts](../docs/scripts/README.md)** - Script usage
+- **[Troubleshooting](../docs/operations/troubleshooting.md)** - Common issues
+
 ## License
 
-[Your License Here]
+MIT License
 

@@ -4,7 +4,7 @@
  * Manages shipment operations: list, create, schedule pickup, cancel, download label.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAdminApi } from './useAdminApi';
 
 export interface Shipment {
@@ -61,8 +61,17 @@ export function useShipments(params: UseShipmentsParams = {}): UseShipmentsResul
   const [page, setPage] = useState(params.page || 1);
   const [pages, setPages] = useState(0);
   const [filters, setFilters] = useState<Partial<UseShipmentsParams>>(params);
+  
+  // Use ref to track if we're currently fetching to prevent concurrent requests
+  const isFetchingRef = useRef(false);
 
   const fetchShipments = useCallback(async () => {
+    // Prevent concurrent requests
+    if (isFetchingRef.current) {
+      return;
+    }
+    
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -79,11 +88,19 @@ export function useShipments(params: UseShipmentsParams = {}): UseShipmentsResul
       setTotal(data.total);
       setPages(data.pages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch shipments');
+      // Only set error if it's not a network error that would cause infinite retries
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch shipments';
+      if (!errorMessage.includes('ERR_INSUFFICIENT_RESOURCES') && !errorMessage.includes('Failed to fetch')) {
+        setError(errorMessage);
+      } else {
+        console.error('Network error fetching shipments:', err);
+        setError('Network error. Please refresh the page.');
+      }
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [api, page, filters, params.limit]);
+  }, [api, page, filters.status, filters.orderId, params.limit]);
 
   useEffect(() => {
     fetchShipments();

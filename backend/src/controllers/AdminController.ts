@@ -18,18 +18,26 @@ import { sanitizePlainText, sanitizeHtmlContent } from '../helpers/sanitize';
 import { generateSlug } from '../helpers/validate';
 import { Category } from '../controllers/CategoryController';
 
+const faqSchema = z.object({
+  question: z.string().min(1),
+  answer: z.string().min(1),
+});
+
 const createProductSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   price: z.number().positive(),
   sku: z.string().optional(),
-  categoryId: z.string().optional(),
+  categoryId: z.string().optional(), // Legacy support
+  categoryIds: z.array(z.string()).optional(), // New multi-category support
   status: z.enum(['active', 'inactive', 'draft']).optional(),
   qty: z.number().int().min(0).optional(),
   lowStockThreshold: z.number().int().min(0).optional(),
   metaTitle: z.string().max(60).optional(),
   metaDescription: z.string().max(160).optional(),
   metaKeywords: z.string().max(255).optional(),
+  imageUrls: z.array(z.string().url()).optional(), // Support image URLs
+  faq: z.array(faqSchema).optional(), // Product FAQs
 });
 
 const updateProductSchema = createProductSchema.partial();
@@ -44,6 +52,7 @@ const createCategorySchema = z.object({
   description: z.string().optional(),
   parentId: z.string().optional(),
   sortOrder: z.number().int().optional().default(0),
+  image: z.string().url().optional().or(z.string().length(0)), // Allow image URL or empty string
 });
 
 const updateCategorySchema = createCategorySchema.partial();
@@ -63,12 +72,85 @@ export class AdminController {
         return;
       }
       
-      const validated = createProductSchema.parse(req.body);
-      const files = req.files as Express.Multer.File[] || [];
+      // Parse FormData body - all values come as strings from FormData
+      const body: any = { ...req.body };
+      
+      // Convert string numbers to actual numbers
+      if (body.price) {
+        body.price = parseFloat(body.price);
+      }
+      if (body.qty !== undefined && body.qty !== '') {
+        body.qty = parseInt(body.qty, 10);
+      }
+      if (body.lowStockThreshold !== undefined && body.lowStockThreshold !== '') {
+        body.lowStockThreshold = parseInt(body.lowStockThreshold, 10);
+      }
+      
+      // Parse JSON strings to arrays
+      if (body.categoryIds && typeof body.categoryIds === 'string') {
+        try {
+          body.categoryIds = JSON.parse(body.categoryIds);
+        } catch (e) {
+          // If not JSON, treat as single value or empty array
+          body.categoryIds = body.categoryIds ? [body.categoryIds] : [];
+        }
+      }
+      if (body.imageUrls && typeof body.imageUrls === 'string') {
+        try {
+          body.imageUrls = JSON.parse(body.imageUrls);
+        } catch (e) {
+          // If not JSON, treat as single value or empty array
+          body.imageUrls = body.imageUrls ? [body.imageUrls] : [];
+        }
+      }
+      if (body.faq && typeof body.faq === 'string') {
+        try {
+          body.faq = JSON.parse(body.faq);
+        } catch (e) {
+          // If not JSON, treat as empty array
+          body.faq = [];
+        }
+      }
+      
+      // Remove empty string values for optional fields
+      if (body.sku === '') delete body.sku;
+      if (body.categoryId === '') delete body.categoryId;
+      if (body.metaTitle === '') delete body.metaTitle;
+      if (body.metaDescription === '') delete body.metaDescription;
+      if (body.metaKeywords === '') delete body.metaKeywords;
+      
+      const validated = createProductSchema.parse(body);
+      const files = (req.files as Express.Multer.File[]) || [];
+      
+      // Ensure required fields are present
+      if (!validated.name || !validated.description || !validated.price) {
+        res.status(400).json({
+          ok: false,
+          error: 'Validation failed',
+          details: 'Missing required fields: name, description, or price',
+        });
+        return;
+      }
+      
+      // Filter out invalid FAQ entries (missing question or answer)
+      const validFAQ = validated.faq?.filter((item): item is { question: string; answer: string } => 
+        !!item.question && !!item.answer
+      ) || [];
       
       const product = await productService.createProduct({
-        ...validated,
+        name: validated.name,
+        description: validated.description,
+        price: validated.price,
+        sku: validated.sku,
+        categoryId: validated.categoryId,
+        categoryIds: validated.categoryIds,
+        status: validated.status,
         images: files,
+        imageUrls: validated.imageUrls,
+        metaTitle: validated.metaTitle,
+        metaDescription: validated.metaDescription,
+        faq: validFAQ.length > 0 ? validFAQ : undefined,
+        metaKeywords: validated.metaKeywords,
       });
       
       // Set inventory if provided
@@ -115,6 +197,53 @@ export class AdminController {
   }
 
   /**
+   * GET /api/admin/products/:id
+   * Get a single product by ID
+   */
+  static async getProduct(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.userId) {
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+
+      const productId = req.params.id;
+      const product = await productService.getProductById(productId);
+
+      if (!product) {
+        res.status(404).json({
+          ok: false,
+          error: 'Product not found',
+        });
+        return;
+      }
+
+      // Get inventory
+      const inventory = product._id 
+        ? await inventoryService.getInventory(product._id)
+        : null;
+
+      res.json({
+        ok: true,
+        data: {
+          ...product,
+          stock: inventory?.qty ?? 0,
+          lowStockThreshold: inventory?.lowStockThreshold ?? 0,
+        },
+      });
+    } catch (error) {
+      console.error('Error getting product:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to fetch product',
+      });
+    }
+  }
+
+  /**
    * PUT /api/admin/products/:id
    * Update a product
    */
@@ -130,11 +259,19 @@ export class AdminController {
       
       const productId = req.params.id;
       const validated = updateProductSchema.parse(req.body);
-      const files = req.files as Express.Multer.File[] || [];
+      const files = (req.files as Express.Multer.File[]) || [];
+      
+      // Filter out invalid FAQ entries (missing question or answer)
+      const validFAQ = validated.faq?.filter((item): item is { question: string; answer: string } => 
+        !!item.question && !!item.answer
+      ) || [];
       
       const product = await productService.updateProduct(productId, {
         ...validated,
         images: files.length > 0 ? files : undefined,
+        imageUrls: validated.imageUrls,
+        categoryIds: validated.categoryIds,
+        faq: validFAQ.length > 0 ? validFAQ : undefined,
         removeImages: req.body.removeImages 
           ? (Array.isArray(req.body.removeImages) ? req.body.removeImages : [req.body.removeImages])
           : undefined,
@@ -243,6 +380,53 @@ export class AdminController {
   }
 
   /**
+   * GET /api/admin/dashboard/stats
+   * Get dashboard statistics
+   */
+  static async getDashboardStats(req: Request, res: Response): Promise<void> {
+    try {
+      const db = mongo.getDb();
+      const ordersCollection = db.collection('orders');
+      const productsCollection = db.collection('products');
+      
+      // Get total orders
+      const totalOrders = await ordersCollection.countDocuments();
+      
+      // Get total revenue (sum of all completed orders)
+      const revenueResult = await ordersCollection.aggregate([
+        { $match: { status: { $in: ['completed', 'delivered'] } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]).toArray();
+      const totalRevenue = revenueResult[0]?.total || 0;
+      
+      // Get pending orders
+      const pendingOrders = await ordersCollection.countDocuments({
+        status: { $in: ['pending', 'processing', 'confirmed'] }
+      });
+      
+      // Get low stock products (from inventory collection)
+      const lowStockItems = await inventoryService.getLowStockItems();
+      const lowStockProducts = lowStockItems.length;
+      
+      res.json({
+        ok: true,
+        data: {
+          totalOrders,
+          totalRevenue,
+          pendingOrders,
+          lowStockProducts,
+        },
+      });
+    } catch (error) {
+      console.error('Error getting dashboard stats:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to get dashboard statistics',
+      });
+    }
+  }
+
+  /**
    * GET /api/admin/orders
    * List orders with filters (date range, search query, status, userId)
    */
@@ -284,17 +468,175 @@ export class AdminController {
       };
       
       const { orders, total } = await orderService.listOrders(filters);
+      const meta = getPaginationMeta(pagination, total);
       
       res.json({
         ok: true,
-        data: orders,
-        meta: getPaginationMeta(pagination, total),
+        data: {
+          items: orders,
+          total: meta.total,
+          pages: meta.pages,
+        },
       });
     } catch (error) {
       console.error('Error listing orders:', error);
       res.status(500).json({
         ok: false,
         error: 'Failed to fetch orders',
+      });
+    }
+  }
+
+  /**
+   * GET /api/admin/orders/:id
+   * Get order details (admin can access any order)
+   */
+  static async getOrder(req: Request, res: Response): Promise<void> {
+    try {
+      const orderId = req.params.id;
+      
+      // Admin can access any order (no userId restriction)
+      const order = await orderService.getOrderById(orderId);
+      
+      if (!order) {
+        res.status(404).json({
+          ok: false,
+          error: 'Order not found',
+        });
+        return;
+      }
+      
+      // Get payment info
+      const db = mongo.getDb();
+      const paymentsCollection = db.collection('payments');
+      const payment = await paymentsCollection.findOne({ orderId });
+      
+      res.json({
+        ok: true,
+        data: {
+          order: {
+            ...order,
+            payment: payment || null,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Error getting order:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to fetch order',
+      });
+    }
+  }
+
+  /**
+   * PUT /api/admin/orders/:id
+   * Update order status
+   */
+  static async updateOrderStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const orderId = req.params.id;
+      const { status } = req.body;
+      
+      // Validate status
+      const validStatuses = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
+      if (!status || !validStatuses.includes(status)) {
+        res.status(400).json({
+          ok: false,
+          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+        });
+        return;
+      }
+      
+      const db = mongo.getDb();
+      const ordersCollection = db.collection('orders');
+      const usersCollection = db.collection('users');
+      
+      // Get order
+      const order = await ordersCollection.findOne({ _id: new ObjectId(orderId) });
+      if (!order) {
+        res.status(404).json({
+          ok: false,
+          error: 'Order not found',
+        });
+        return;
+      }
+      
+      const oldStatus = order.status;
+      
+      // Update order status
+      const result = await ordersCollection.updateOne(
+        { _id: new ObjectId(orderId) },
+        {
+          $set: {
+            status,
+            updatedAt: new Date(),
+          },
+        }
+      );
+      
+      if (result.matchedCount === 0) {
+        res.status(404).json({
+          ok: false,
+          error: 'Order not found',
+        });
+        return;
+      }
+      
+      // Send email notification if order is marked as shipped
+      if (status === 'shipped' && oldStatus !== 'shipped') {
+        try {
+          // Get user details
+          const user = await usersCollection.findOne({ _id: order.userId });
+          
+          if (user && user.email) {
+            const { emailTriggerService } = await import('../services/EmailTriggerService');
+            const { EmailEventType } = await import('../models/EmailTemplate');
+            
+            await emailTriggerService.sendTemplateEmail(
+              EmailEventType.ORDER_SHIPPED,
+              user.email,
+              {
+                userName: user.firstName || user.email,
+                orderId: order._id.toString(),
+                orderDate: new Date(order.placedAt).toLocaleDateString('en-IN'),
+                trackingNumber: order.shipment?.awb || 'Not available yet',
+              },
+              {
+                isImportant: true,
+                skipPreferences: true,
+              }
+            );
+            
+            console.log(`Shipped notification email sent to ${user.email} for order ${orderId}`);
+          }
+        } catch (emailError) {
+          // Log error but don't fail the request
+          console.error('Error sending shipped notification email:', emailError);
+        }
+      }
+      
+      // Log audit event
+      await AdminController.logAudit({
+        actorId: req.userId,
+        actorType: 'user',
+        action: 'order.status_update',
+        objectType: 'order',
+        objectId: orderId,
+        metadata: { oldStatus, newStatus: status },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      
+      res.json({
+        ok: true,
+        message: 'Order status updated successfully',
+      });
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to update order status',
       });
     }
   }
@@ -445,19 +787,60 @@ export class AdminController {
           .toArray(),
         usersCollection.countDocuments(query),
       ]);
-      
-      // Remove sensitive data
-      const safeUsers = users.map(user => ({
-        _id: user._id?.toString(),
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        status: user.status || 'active',
-        isEmailVerified: user.isEmailVerified,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      }));
+
+      const userIds = users.map(user => user._id?.toString()).filter((id): id is string => Boolean(id));
+      const userRolesCollection = db.collection('user_roles');
+      const rolesCollection = db.collection('roles');
+      let roleNameMap = new Map<string, string>();
+      let userRoleNames = new Map<string, string[]>();
+      let userRoleIds = new Map<string, string[]>();
+
+      if (userIds.length > 0) {
+        const assignments = await userRolesCollection.find({ userId: { $in: userIds } }).toArray();
+        const roleIds = assignments
+          .map(a => a.roleId)
+          .filter((roleId): roleId is ObjectId => !!roleId);
+
+        if (roleIds.length > 0) {
+          const roles = await rolesCollection.find({ _id: { $in: roleIds } }).toArray();
+          roleNameMap = new Map(roles.map(role => [role._id?.toString() || '', role.name]));
+        }
+
+        assignments.forEach(assignment => {
+          const userId = assignment.userId;
+          if (!userRoleNames.has(userId)) {
+            userRoleNames.set(userId, []);
+            userRoleIds.set(userId, []);
+          }
+          const roleIdString = assignment.roleId?.toString();
+          const roleName = assignment.roleName || (roleIdString ? roleNameMap.get(roleIdString) : undefined);
+          if (roleName) {
+            userRoleNames.get(userId)!.push(roleName);
+          }
+          if (roleIdString) {
+            userRoleIds.get(userId)!.push(roleIdString);
+          }
+        });
+      }
+
+      const safeUsers = users.map(user => {
+        const id = user._id?.toString() || '';
+        const roles = userRoleNames.get(id) || (user.role ? [user.role] : []);
+        const roleIds = userRoleIds.get(id) || [];
+        return {
+          _id: id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: roles[0] || user.role,
+          roles,
+          roleIds,
+          status: user.status || 'active',
+          isEmailVerified: user.isEmailVerified,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        };
+      });
       
       res.json({
         ok: true,
@@ -483,6 +866,8 @@ export class AdminController {
       const userId = req.params.id;
       const db = mongo.getDb();
       const usersCollection = db.collection<User>('users');
+      const userRolesCollection = db.collection('user_roles');
+      const rolesCollection = db.collection('roles');
       
       const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
       
@@ -494,13 +879,33 @@ export class AdminController {
         return;
       }
       
-      // Remove sensitive data
+      const assignments = await userRolesCollection.find({ userId }).toArray();
+      const assignmentRoleIds = assignments
+        .map(a => a.roleId)
+        .filter((roleId): roleId is ObjectId => !!roleId);
+      let roleNameMap = new Map<string, string>();
+      if (assignmentRoleIds.length > 0) {
+        const roles = await rolesCollection.find({ _id: { $in: assignmentRoleIds } }).toArray();
+        roleNameMap = new Map(roles.map(role => [role._id?.toString() || '', role.name]));
+      }
+      const roleNames = assignments
+        .map(assignment => {
+          const roleId = assignment.roleId?.toString();
+          return assignment.roleName || (roleId ? roleNameMap.get(roleId) : undefined);
+        })
+        .filter((name): name is string => Boolean(name));
+      const roleIds = assignments
+        .map(assignment => assignment.roleId?.toString())
+        .filter((id): id is string => Boolean(id));
+      
       const safeUser = {
         _id: user._id?.toString(),
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role,
+        role: roleNames[0] || user.role || 'user',
+        roles: roleNames.length > 0 ? roleNames : user.roles || (user.role ? [user.role] : []),
+        roleIds,
         status: user.status || 'active',
         isEmailVerified: user.isEmailVerified,
         emailPreferences: user.emailPreferences,
@@ -716,6 +1121,7 @@ export class AdminController {
       const db = mongo.getDb();
       const usersCollection = db.collection<User>('users');
       const userRolesCollection = db.collection('user_roles');
+      const rolesCollection = db.collection('roles');
       
       const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
       if (!user) {
@@ -726,26 +1132,47 @@ export class AdminController {
         return;
       }
       
-      // Remove existing role assignments
+      const roleObjectIds = roles
+        .filter((roleId: string) => ObjectId.isValid(roleId))
+        .map((roleId: string) => new ObjectId(roleId));
+
+      if (roleObjectIds.length !== roles.length) {
+        res.status(400).json({
+          ok: false,
+          error: 'One or more roles are invalid',
+        });
+        return;
+      }
+
+      const roleDocs = await rolesCollection.find({ _id: { $in: roleObjectIds } }).toArray();
+      if (roleDocs.length !== roleObjectIds.length) {
+        res.status(400).json({
+          ok: false,
+          error: 'One or more roles do not exist',
+        });
+        return;
+      }
+
       await userRolesCollection.deleteMany({ userId });
-      
-      // Add new role assignments
-      if (roles.length > 0) {
-        const roleAssignments = roles.map((roleId: string) => ({
+
+      if (roleDocs.length > 0) {
+        const roleAssignments = roleDocs.map(role => ({
           userId,
-          roleId: new ObjectId(roleId),
+          roleId: role._id!,
+          roleName: role.name,
           assignedBy: req.userId,
           assignedAt: new Date(),
         }));
         await userRolesCollection.insertMany(roleAssignments);
       }
-      
-      // Update user's primary role (use first role or null)
+
+      const roleNames = roleDocs.map(role => role.name);
       await usersCollection.updateOne(
         { _id: new ObjectId(userId) },
         {
           $set: {
-            role: roles.length > 0 ? roles[0] : undefined,
+            role: roleNames[0],
+            roles: roleNames,
             updatedAt: new Date(),
           },
         }
@@ -758,7 +1185,7 @@ export class AdminController {
         action: 'user.roles.update',
         objectType: 'user',
         objectId: userId,
-        metadata: { email: user.email, roles },
+        metadata: { email: user.email, roles: roleNames },
         ipAddress: req.ip,
         userAgent: req.get('user-agent'),
       });
@@ -881,6 +1308,41 @@ export class AdminController {
   }
 
   /**
+   * GET /api/admin/categories
+   * List all categories for admin
+   */
+  static async listCategories(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.userId) {
+        res.status(401).json({
+          ok: false,
+          error: 'Authentication required',
+        });
+        return;
+      }
+
+      const db = mongo.getDb();
+      const categoriesCollection = db.collection<Category>('categories');
+
+      const categories = await categoriesCollection
+        .find({})
+        .sort({ sortOrder: 1, name: 1 })
+        .toArray();
+
+      res.json({
+        ok: true,
+        data: categories,
+      });
+    } catch (error) {
+      console.error('Error listing categories:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to fetch categories',
+      });
+    }
+  }
+
+  /**
    * POST /api/admin/categories
    * Create a new category
    */
@@ -918,6 +1380,7 @@ export class AdminController {
         description: validated.description ? sanitizeHtmlContent(validated.description) : undefined,
         parentId: validated.parentId || undefined,
         sortOrder: validated.sortOrder || 0,
+        image: validated.image || undefined,
         createdAt: new Date(),
       };
       
@@ -1020,6 +1483,10 @@ export class AdminController {
         update.sortOrder = validated.sortOrder;
       }
       
+      if (validated.image !== undefined) {
+        update.image = validated.image || undefined;
+      }
+      
       await categoriesCollection.updateOne(
         { _id: categoryObjId },
         { $set: update }
@@ -1091,8 +1558,13 @@ export class AdminController {
         return;
       }
       
-      // Check if category has products
-      const productCount = await productsCollection.countDocuments({ categoryId });
+      // Check if category has products (check both categoryId and categoryIds)
+      const productCount = await productsCollection.countDocuments({
+        $or: [
+          { categoryId: categoryId },
+          { categoryIds: categoryId },
+        ],
+      });
       if (productCount > 0) {
         res.status(400).json({
           ok: false,
@@ -1155,4 +1627,3 @@ export class AdminController {
     }
   }
 }
-

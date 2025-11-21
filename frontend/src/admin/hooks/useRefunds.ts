@@ -4,7 +4,7 @@
  * Manages refund operations: list, process refunds.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAdminApi } from './useAdminApi';
 
 export interface Refund {
@@ -48,8 +48,17 @@ export function useRefunds(params: UseRefundsParams = {}): UseRefundsResult {
   const [page, setPage] = useState(params.page || 1);
   const [pages, setPages] = useState(0);
   const [filters, setFilters] = useState<Partial<UseRefundsParams>>(params);
+  
+  // Use ref to track if we're currently fetching to prevent concurrent requests
+  const isFetchingRef = useRef(false);
 
   const fetchRefunds = useCallback(async () => {
+    // Prevent concurrent requests
+    if (isFetchingRef.current) {
+      return;
+    }
+    
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -66,11 +75,19 @@ export function useRefunds(params: UseRefundsParams = {}): UseRefundsResult {
       setTotal(data.total);
       setPages(data.pages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch refunds');
+      // Only set error if it's not a network error that would cause infinite retries
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch refunds';
+      if (!errorMessage.includes('ERR_INSUFFICIENT_RESOURCES') && !errorMessage.includes('Failed to fetch')) {
+        setError(errorMessage);
+      } else {
+        console.error('Network error fetching refunds:', err);
+        setError('Network error. Please refresh the page.');
+      }
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [api, page, filters, params.limit]);
+  }, [api, page, filters.status, filters.orderId, params.limit]);
 
   useEffect(() => {
     fetchRefunds();

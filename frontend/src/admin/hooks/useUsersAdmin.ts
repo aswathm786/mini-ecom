@@ -4,7 +4,7 @@
  * Manages user operations: list, view, update, revoke sessions.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAdminApi } from './useAdminApi';
 
 export interface User {
@@ -47,6 +47,8 @@ interface UseUsersAdminResult {
   getUserSessions: (userId: string) => Promise<Session[]>;
   updateUser: (userId: string, data: Partial<User>) => Promise<boolean>;
   revokeUserSession: (userId: string, sessionId: string) => Promise<boolean>;
+  updateUserRoles: (userId: string, roleIds: string[]) => Promise<boolean>;
+  blockUser: (userId: string, blocked: boolean) => Promise<boolean>;
   refetch: () => void;
 }
 
@@ -59,8 +61,17 @@ export function useUsersAdmin(params: UseUsersAdminParams = {}): UseUsersAdminRe
   const [page, setPage] = useState(params.page || 1);
   const [pages, setPages] = useState(0);
   const [filters, setFilters] = useState<Partial<UseUsersAdminParams>>(params);
+  
+  // Use ref to track if we're currently fetching to prevent concurrent requests
+  const isFetchingRef = useRef(false);
 
   const fetchUsers = useCallback(async () => {
+    // Prevent concurrent requests
+    if (isFetchingRef.current) {
+      return;
+    }
+    
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -73,16 +84,24 @@ export function useUsersAdmin(params: UseUsersAdminParams = {}): UseUsersAdminRe
       if (filters.role) queryParams.role = filters.role;
       if (filters.status) queryParams.status = filters.status;
 
-      const data = await api.get<{ items: User[]; total: number; pages: number }>('/users', queryParams);
-      setUsers(data.items);
-      setTotal(data.total);
-      setPages(data.pages);
+      const data = await api.get<{ items?: User[]; total?: number; pages?: number }>('/users', queryParams);
+      setUsers(data?.items ?? []);
+      setTotal(data?.total ?? 0);
+      setPages(data?.pages ?? 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch users');
+      // Only set error if it's not a network error that would cause infinite retries
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch users';
+      if (!errorMessage.includes('ERR_INSUFFICIENT_RESOURCES') && !errorMessage.includes('Failed to fetch')) {
+        setError(errorMessage);
+      } else {
+        console.error('Network error fetching users:', err);
+        setError('Network error. Please refresh the page.');
+      }
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [api, page, filters, params.limit]);
+  }, [api, page, filters.search, filters.role, filters.status, params.limit]);
 
   useEffect(() => {
     fetchUsers();
@@ -129,6 +148,28 @@ export function useUsersAdmin(params: UseUsersAdminParams = {}): UseUsersAdminRe
     }
   }, [api]);
 
+  const updateUserRoles = useCallback(async (userId: string, roleIds: string[]): Promise<boolean> => {
+    try {
+      await api.put(`/users/${userId}/roles`, { roles: roleIds });
+      await fetchUsers();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user roles');
+      return false;
+    }
+  }, [api, fetchUsers]);
+
+  const blockUser = useCallback(async (userId: string, blocked: boolean): Promise<boolean> => {
+    try {
+      await api.put(`/users/${userId}/block`, { blocked });
+      await fetchUsers();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user status');
+      return false;
+    }
+  }, [api, fetchUsers]);
+
   return {
     users,
     loading,
@@ -142,6 +183,8 @@ export function useUsersAdmin(params: UseUsersAdminParams = {}): UseUsersAdminRe
     getUserSessions,
     updateUser,
     revokeUserSession,
+    updateUserRoles,
+    blockUser,
     refetch: fetchUsers,
   };
 }

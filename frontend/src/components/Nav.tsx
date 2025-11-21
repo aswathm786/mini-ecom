@@ -5,13 +5,15 @@
  */
 
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useCart } from '../hooks/useCart';
 import { IconCart } from './IconCart';
 
 export function Nav() {
   const [isOpen, setIsOpen] = useState(false);
   const { user, isAuthenticated, logout } = useAuth();
+  const { itemCount } = useCart();
   const location = useLocation();
 
   const toggleMenu = () => {
@@ -70,45 +72,89 @@ export function Nav() {
               className="flex flex-col p-4 space-y-2"
               aria-label="Mobile navigation"
             >
-              <Link
+              <NavLink
                 to="/"
+                end
                 onClick={closeMenu}
-                className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                  location.pathname === '/'
-                    ? 'text-primary-600 bg-primary-50'
-                    : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
-                }`}
+                className={({ isActive }) =>
+                  [
+                    'px-4 py-2 rounded-md font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50',
+                  ].join(' ')
+                }
               >
                 Home
-              </Link>
-              <Link
-                to="/#categories"
+              </NavLink>
+              <NavLink
+                to="/categories"
                 onClick={closeMenu}
-                className="px-4 py-2 rounded-md font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 transition-colors"
+                className={({ isActive }) =>
+                  [
+                    'px-4 py-2 rounded-md font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50',
+                  ].join(' ')
+                }
               >
                 Categories
-              </Link>
-              <Link
+              </NavLink>
+              <NavLink
                 to="/cart"
                 onClick={closeMenu}
-                className="px-4 py-2 rounded-md font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className={({ isActive }) =>
+                  [
+                    'px-4 py-2 rounded-md font-medium transition-colors flex items-center gap-2',
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50',
+                  ].join(' ')
+                }
               >
-                <IconCart />
+                <span className="relative">
+                  <IconCart />
+                  {itemCount > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center min-w-[1.25rem]">
+                      {itemCount > 99 ? '99+' : itemCount}
+                    </span>
+                  )}
+                </span>
                 Cart
-              </Link>
+              </NavLink>
               {isAuthenticated ? (
                 <>
-                  <Link
+                  <NavLink
                     to="/account"
                     onClick={closeMenu}
-                    className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                      location.pathname === '/account'
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
-                    }`}
+                    className={({ isActive }) =>
+                      [
+                        'px-4 py-2 rounded-md font-medium transition-colors',
+                        isActive || location.pathname.startsWith('/account')
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50',
+                      ].join(' ')
+                    }
                   >
                     Account
-                  </Link>
+                  </NavLink>
+                  {(user?.role === 'admin' || user?.role === 'root' || (user?.roles && user.roles.some(r => ['admin', 'root', 'administrator'].includes(r?.toLowerCase()))) || (user?.permissions && user.permissions.length > 0)) && (
+                    <NavLink
+                      to="/admin"
+                      onClick={closeMenu}
+                      className={({ isActive }) =>
+                        [
+                          'px-4 py-2 rounded-md font-medium transition-colors',
+                          isActive || location.pathname.startsWith('/admin')
+                            ? 'bg-primary-600 text-white'
+                            : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50',
+                        ].join(' ')
+                      }
+                    >
+                      Admin
+                    </NavLink>
+                  )}
                   <button
                     onClick={async () => {
                       await logout();
@@ -120,13 +166,20 @@ export function Nav() {
                   </button>
                 </>
               ) : (
-                <Link
+                <NavLink
                   to="/login"
                   onClick={closeMenu}
-                  className="px-4 py-2 rounded-md font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 transition-colors"
+                  className={({ isActive }) =>
+                    [
+                      'px-4 py-2 rounded-md font-medium transition-colors',
+                      isActive
+                        ? 'bg-primary-600 text-white'
+                        : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50',
+                    ].join(' ')
+                  }
                 >
                   Login
-                </Link>
+                </NavLink>
               )}
             </nav>
           </div>
@@ -135,4 +188,6 @@ export function Nav() {
     </>
   );
 }
+
+export default Nav;
 

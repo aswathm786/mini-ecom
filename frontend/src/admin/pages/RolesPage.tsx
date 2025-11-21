@@ -15,6 +15,7 @@ interface Role {
   name: string;
   description?: string;
   permissions: string[];
+  isSystem?: boolean;
 }
 
 interface Permission {
@@ -29,6 +30,9 @@ export function RolesPage() {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
+  const [newRole, setNewRole] = useState({ name: '', description: '' });
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type?: 'success' | 'error' | 'warning' | 'info' }>>([]);
 
   useEffect(() => {
@@ -49,10 +53,52 @@ export function RolesPage() {
     try {
       const data = await api.get<Role[]>('/roles');
       setRoles(data);
+      if (!selectedRole && data.length > 0) {
+        setSelectedRole(data[0]);
+      }
     } catch (err) {
       addToast('Failed to load roles', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateRole = async () => {
+    if (!newRole.name.trim()) {
+      addToast('Role name is required', 'error');
+      return;
+    }
+    setCreating(true);
+    try {
+      const payload = {
+        name: newRole.name.trim(),
+        description: newRole.description.trim() || undefined,
+        permissions: [],
+      };
+      const created = await api.post<Role>('/roles', payload);
+      setRoles((prev) => [...prev, created]);
+      setNewRole({ name: '', description: '' });
+      addToast('Role created successfully', 'success');
+    } catch (err) {
+      addToast('Failed to create role', 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteRole = async (roleId: string) => {
+    setDeletingRoleId(roleId);
+    try {
+      await api.delete(`/roles/${roleId}`);
+      setRoles((prev) => prev.filter((role) => role._id !== roleId));
+      if (selectedRole?._id === roleId) {
+        setSelectedRole(null);
+      }
+      addToast('Role deleted', 'success');
+    } catch (err) {
+      addToast('Failed to delete role', 'error');
+    } finally {
+      setDeletingRoleId(null);
     }
   };
 
@@ -74,8 +120,10 @@ export function RolesPage() {
       });
       addToast('Permissions updated successfully', 'success');
       await loadRoles();
-    } catch (err) {
-      addToast('Failed to update permissions', 'error');
+    } catch (err: any) {
+      console.error('Error updating permissions:', err);
+      const errorMessage = err?.response?.error || err?.message || 'Failed to update permissions';
+      addToast(errorMessage, 'error');
     }
   };
 
@@ -106,23 +154,57 @@ export function RolesPage() {
         {/* Roles List */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Roles</h2>
-          <div className="space-y-2">
-            {roles.map((role) => (
-              <button
-                key={role._id}
-                onClick={() => setSelectedRole(role)}
-                className={`w-full text-left px-4 py-2 rounded-md ${
-                  selectedRole?._id === role._id
-                    ? 'bg-primary-100 text-primary-900'
-                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <p className="font-medium">{role.name}</p>
-                {role.description && (
-                  <p className="text-sm text-gray-600">{role.description}</p>
-                )}
-              </button>
-            ))}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <input
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                placeholder="Role name"
+                value={newRole.name}
+                onChange={(e) => setNewRole((prev) => ({ ...prev, name: e.target.value }))}
+              />
+              <input
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                placeholder="Description"
+                value={newRole.description}
+                onChange={(e) => setNewRole((prev) => ({ ...prev, description: e.target.value }))}
+              />
+              <Button type="button" size="sm" isLoading={creating} onClick={handleCreateRole}>
+                Create Role
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {roles.map((role) => (
+                <div
+                  key={role._id}
+                  className={`flex items-start justify-between rounded-md border px-4 py-2 ${
+                    selectedRole?._id === role._id ? 'border-primary-200 bg-primary-50' : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="text-left flex-1"
+                    onClick={() => setSelectedRole(role)}
+                  >
+                    <p className="font-medium">{role.name}</p>
+                    {role.description && (
+                      <p className="text-sm text-gray-600">{role.description}</p>
+                    )}
+                  </button>
+                  {!role.isSystem && role.name.toLowerCase() !== 'admin' && role.name.toLowerCase() !== 'root' && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      isLoading={deletingRoleId === role._id}
+                      onClick={() => handleDeleteRole(role._id)}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

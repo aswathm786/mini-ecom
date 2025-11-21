@@ -35,22 +35,60 @@ export interface EmailResult {
 
 class MailService {
   /**
+   * Check if SMTP is enabled in settings
+   */
+  private async isSMTPEnabled(): Promise<boolean> {
+    try {
+      const { platformSettingsService } = await import('./PlatformSettingsService');
+      const settings = await platformSettingsService.getSettings();
+      // Check nested structure: settings.email.smtp.enabled
+      const email = (settings as any).email;
+      if (email && email.smtp && email.smtp.enabled === true) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Get mail transport (sendmail or SMTP)
    */
   private async getTransport(): Promise<nodemailer.Transporter | null> {
     const mailDriver = Config.get('MAIL_DRIVER', 'sendmail');
-    const smtpEnabled = Config.bool('SMTP_ENABLED', false);
+    const smtpEnabled = await this.isSMTPEnabled();
     
     if (mailDriver === 'smtp' && smtpEnabled) {
-      // SMTP transport
-      const smtpHost = Config.get('SMTP_HOST', 'smtp.gmail.com');
-      const smtpPort = Config.int('SMTP_PORT', 587);
-      const smtpSecure = Config.bool('SMTP_SECURE', false);
-      const smtpUser = Config.get('SMTP_USER', '');
-      const smtpPass = Config.get('SMTP_PASS', '');
+      // Try to get SMTP credentials from Config first (env vars or loaded settings)
+      let smtpHost = Config.get('SMTP_HOST', '');
+      let smtpPort = Config.int('SMTP_PORT', 0);
+      let smtpSecure = Config.bool('SMTP_SECURE', false);
+      let smtpUser = Config.get('SMTP_USER', '');
+      let smtpPass = Config.get('SMTP_PASS', '');
       
-      if (!smtpUser || !smtpPass) {
-        console.warn('SMTP credentials not configured, falling back to sendmail');
+      // If not found in Config, try to get from SettingsService (database)
+      if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
+        try {
+          const { settingsService } = await import('./SettingsService');
+          smtpHost = smtpHost || (await settingsService.getSetting('SMTP_HOST')) || '';
+          const smtpPortStr = smtpPort || (await settingsService.getSetting('SMTP_PORT')) || '';
+          smtpPort = smtpPort || (smtpPortStr ? parseInt(String(smtpPortStr)) : 587);
+          smtpUser = smtpUser || (await settingsService.getSetting('SMTP_USER')) || '';
+          smtpPass = smtpPass || (await settingsService.getSetting('SMTP_PASS')) || '';
+        } catch (error) {
+          console.warn('Failed to load SMTP settings from database:', error);
+        }
+      }
+      
+      if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
+        console.warn('SMTP credentials not fully configured. Please configure SMTP in admin settings or environment variables.');
+        console.warn('Missing:', {
+          host: !smtpHost,
+          port: !smtpPort,
+          user: !smtpUser,
+          pass: !smtpPass,
+        });
         return null;
       }
       
@@ -122,8 +160,26 @@ class MailService {
     options: EmailOptions
   ): Promise<EmailResult> {
     try {
-      const fromEmail = Config.get('SMTP_FROM_EMAIL', 'noreply@yourdomain.com');
-      const fromName = Config.get('SMTP_FROM_NAME', 'Your Store Name');
+      let fromEmail = Config.get('SMTP_FROM_EMAIL', '');
+      let fromName = Config.get('SMTP_FROM_NAME', '');
+      
+      // If not in Config, try to get from database
+      if (!fromEmail || !fromName) {
+        try {
+          const { settingsService } = await import('./SettingsService');
+          fromEmail = fromEmail || (await settingsService.getSetting('email.smtp.from')) || (await settingsService.getSetting('store.email')) || 'noreply@yourdomain.com';
+          
+          // Try to get store name from store settings for "from" name
+          if (!fromName) {
+            const { storeSettingsService } = await import('./StoreSettingsService');
+            fromName = await storeSettingsService.getStoreName() || (await settingsService.getSetting('email.smtp.from')) || 'Your Store Name';
+          }
+        } catch (error) {
+          console.warn('Failed to load FROM email settings from database:', error);
+          fromEmail = fromEmail || 'noreply@yourdomain.com';
+          fromName = fromName || 'Your Store Name';
+        }
+      }
       
       const mailOptions = {
         from: `${fromName} <${fromEmail}>`,
@@ -141,15 +197,22 @@ class MailService {
       
       const info = await transport.sendMail(mailOptions);
       
+      console.log(`✓ Email sent successfully to ${options.to} (Message ID: ${info.messageId})`);
+      
       return {
         success: true,
         messageId: info.messageId,
       };
     } catch (error) {
       console.error('Error sending email via SMTP:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // Log more details for debugging
+      if (error instanceof Error && 'code' in error) {
+        console.error('SMTP Error Code:', (error as any).code);
+      }
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       };
     }
   }
@@ -161,14 +224,18 @@ class MailService {
     const transport = await this.getTransport();
     
     if (transport) {
+      console.log(`Sending email via SMTP to ${options.to}`);
       return await this.sendViaSMTP(transport, options);
     } else {
+      console.warn('SMTP not configured, attempting to use sendmail (may not work on Windows)');
+      console.warn('To enable email, configure SMTP settings in Admin Panel > Settings > Email Settings');
       return await this.sendViaSendmail(options);
     }
   }
 
   /**
    * Send order confirmation email
+   * Note: This is a legacy method. New emails should use EmailTriggerService.
    */
   async sendOrderConfirmation(
     order: any,
@@ -180,6 +247,17 @@ class MailService {
         success: false,
         error: 'Customer email not found',
       };
+    }
+    
+    // Get site name first, then fallback to store.name, then default
+    let storeName = Config.get('APP_NAME', 'Handmade Harmony');
+    try {
+      const { settingsService } = await import('./SettingsService');
+      const siteName = await settingsService.getSetting('site.name');
+      const storeNameSetting = await settingsService.getSetting('store.name');
+      storeName = siteName || storeNameSetting || storeName;
+    } catch (error) {
+      console.warn('Failed to load site/store name from settings:', error);
     }
     
     const orderDate = new Date(order.placedAt).toLocaleDateString('en-IN', {
@@ -195,7 +273,7 @@ class MailService {
       <p><strong>Order Date:</strong> ${orderDate}</p>
       <p><strong>Total Amount:</strong> ₹${order.amount.toFixed(2)}</p>
       <p>We will send you tracking information once your order ships.</p>
-      <p>Best regards,<br>${Config.get('APP_NAME', 'Handmade Harmony')}</p>
+      <p>Best regards,<br>${storeName}</p>
     `;
     
     const attachments = invoicePath && fs.existsSync(invoicePath)
@@ -230,13 +308,22 @@ class MailService {
       };
     }
     
+    // Get store name from store settings, fallback to store.name, then default
+    let storeName = Config.get('APP_NAME', 'Handmade Harmony');
+    try {
+      const { storeSettingsService } = await import('./StoreSettingsService');
+      storeName = await storeSettingsService.getStoreName();
+    } catch (error) {
+      console.warn('Failed to load store name from settings:', error);
+    }
+    
     const html = `
       <h2>Invoice ${invoice.invoiceNumber}</h2>
       <p>Dear ${order.shippingAddress.name},</p>
       <p>Please find attached invoice for your order #${order._id}.</p>
       <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
       <p><strong>Amount:</strong> ₹${invoice.amount.toFixed(2)}</p>
-      <p>Best regards,<br>${Config.get('APP_NAME', 'Handmade Harmony')}</p>
+      <p>Best regards,<br>${storeName}</p>
     `;
     
     const attachments = invoicePath && fs.existsSync(invoicePath)

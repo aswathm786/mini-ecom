@@ -88,21 +88,29 @@ export function OrderShowPage() {
     addToast('Shipment creation not yet implemented', 'warning');
   };
 
-  const handleGenerateInvoice = async () => {
+  const handleDownloadInvoice = async () => {
     try {
-      await api.generateInvoice(id!);
-      addToast('Invoice generated successfully', 'success');
-    } catch (err) {
-      addToast('Failed to generate invoice', 'error');
-    }
-  };
+      const response = await fetch(`/api/orders/${id}/invoice`, {
+        credentials: 'include',
+      });
 
-  const handleSendInvoice = async () => {
-    const success = await api.sendInvoice(id!);
-    if (success) {
-      addToast('Invoice sent successfully', 'success');
-    } else {
-      addToast('Failed to send invoice', 'error');
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `invoice-${id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        addToast('Invoice downloaded successfully', 'success');
+      } else {
+        throw new Error('Failed to download invoice');
+      }
+    } catch (err) {
+      console.error('Error downloading invoice:', err);
+      addToast('Failed to download invoice', 'error');
     }
   };
 
@@ -142,8 +150,7 @@ export function OrderShowPage() {
           onManualCapture={handleManualCapture}
           onRefund={handleRefund}
           onCreateShipment={handleCreateShipment}
-          onGenerateInvoice={handleGenerateInvoice}
-          onSendInvoice={handleSendInvoice}
+          onDownloadInvoice={handleDownloadInvoice}
         />
       </div>
 

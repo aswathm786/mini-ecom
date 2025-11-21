@@ -130,7 +130,25 @@ miniecom/
    sudo systemctl start mongod
    ```
 
-5. **Run migrations:**
+5. **Initialize database schema:**
+
+   **On Mac/Linux:**
+   ```bash
+   # Initialize MongoDB collections and indexes
+   npx ts-node --project scripts/tsconfig.json scripts/init_mongodb_schema.ts
+   # OR using helper script:
+   bash scripts/init_schema.sh
+   ```
+
+   **On Windows (PowerShell):**
+   ```powershell
+   # Initialize MongoDB collections and indexes
+   npx ts-node --project scripts/tsconfig.json scripts/init_mongodb_schema.ts
+   # OR using helper script:
+   .\scripts\init_schema.ps1
+   ```
+
+6. **Run migrations:**
 
    **On Mac/Linux:**
    ```bash

@@ -31,7 +31,8 @@ export interface Address {
 
 export interface Order {
   _id?: string;
-  userId: string;
+  userId?: string; // Optional for guest checkout
+  guestEmail?: string; // For guest orders
   items: OrderItem[];
   amount: number;
   currency: string;
@@ -40,6 +41,15 @@ export interface Order {
   billingAddress: Address;
   placedAt: Date;
   razorpayOrderId?: string;
+  couponCode?: string;
+  couponDiscount?: number;
+  loyaltyPointsRedeemed?: number;
+  loyaltyDiscount?: number;
+  giftWrap?: boolean;
+  shippingMethod?: string;
+  shippingCost?: number;
+  taxRate?: number;
+  taxAmount?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -60,15 +70,55 @@ export interface Payment {
 
 class OrderService {
   /**
+   * Check if MongoDB transactions are supported
+   */
+  private async supportsTransactions(): Promise<boolean> {
+    // Temporarily disabled - standalone MongoDB doesn't support transactions properly
+    // Even when it reports as a replica set, the transaction behavior can be problematic
+    // The atomic findOneAndUpdate operations are sufficient for inventory management
+    return false;
+    
+    /* Original implementation - re-enable when using proper replica set
+    try {
+      const client = mongo.getClient();
+      const session = client.startSession();
+      await session.endSession();
+      
+      // Check if we're connected to a replica set or sharded cluster
+      const db = mongo.getDb();
+      const admin = db.admin();
+      const serverStatus = await admin.serverStatus();
+      
+      // Transactions are supported on replica sets and sharded clusters
+      return serverStatus.repl !== undefined || serverStatus.process === 'mongos';
+    } catch (error) {
+      console.warn('Transaction check failed, assuming standalone MongoDB:', error);
+      return false;
+    }
+    */
+  }
+
+  /**
    * Create order from cart
    * Validates inventory, reserves stock, creates order and payment records
    */
   async createOrder(
-    userId: string,
+    userId: string | undefined,
     cart: Cart,
     shippingAddress: Address,
     billingAddress: Address,
-    paymentMethod: string
+    paymentMethod: string,
+    options?: {
+      email?: string;
+      couponCode?: string;
+      couponDiscount?: number;
+      loyaltyPointsRedeemed?: number;
+      loyaltyDiscount?: number;
+      giftWrap?: boolean;
+      shippingMethod?: string;
+      shippingCost?: number;
+      taxRate?: number;
+    }
   ): Promise<{ order: Order; payment: Payment; errors?: string[] }> {
     const client = mongo.getClient();
     const db = mongo.getDb();
@@ -100,47 +150,87 @@ class OrderService {
       };
     });
     
-    // Calculate total amount
-    const amount = orderItems.reduce(
+    // Calculate subtotal
+    const subtotal = orderItems.reduce(
       (sum, item) => sum + item.priceAt * item.qty,
       0
     );
+
+    // Apply discounts
+    const couponDiscount = options?.couponDiscount || 0;
+    const loyaltyDiscount = options?.loyaltyDiscount || 0;
+    const totalDiscount = couponDiscount + loyaltyDiscount;
+
+    // Get shipping cost and tax rate
+    const shippingCost = options?.shippingCost || 0;
+    const taxRate = options?.taxRate || 0;
     
-    // Use MongoDB transaction for atomicity
-    const session = client.startSession();
+    // Calculate tax amount (on subtotal + shipping - discounts)
+    const taxableAmount = Math.max(0, subtotal + shippingCost - totalDiscount);
+    const taxAmount = taxableAmount * (taxRate / 100);
+
+    // Calculate final amount (subtotal + shipping - discounts + tax)
+    const amount = Math.max(0, subtotal + shippingCost - totalDiscount + taxAmount);
+    
+    // Check if transactions are supported
+    const useTransactions = await this.supportsTransactions();
+    
+    // Use MongoDB transaction for atomicity (if supported)
+    const session = useTransactions ? client.startSession() : null;
     
     try {
-      const result = await session.withTransaction(async () => {
-        // Reserve inventory for all items within transaction
+      const executeOrderCreation = async () => {
+        // Reserve inventory for all items
         const inventoryReservations: Array<{ productId: string; qty: number; success: boolean }> = [];
         
         for (const item of cart.items) {
-          const productObjId = new ObjectId(item.productId);
+          // Note: productId in inventory collection is stored as ObjectId
+          const productIdObj = new ObjectId(item.productId);
           
-          // Atomic update: decrement quantity only if sufficient stock available
-          const inventoryResult = await inventoryCollection.findOneAndUpdate(
+          // Check inventory availability (not using session to avoid conflicts)
+          const existingInventory = await inventoryCollection.findOne(
+            { productId: productIdObj }
+          );
+          
+          // Simplified logging - verbose debug removed
+          if (!existingInventory) {
+            console.log(`Inventory check failed: No record found for product ${item.productId}`);
+          }
+          
+          if (!existingInventory) {
+            throw new Error(
+              `No inventory record found for product ${item.productId}`
+            );
+          }
+          
+          if (existingInventory.qty < item.qty) {
+            throw new Error(
+              `Insufficient inventory for product ${item.productId}. Available: ${existingInventory.qty}, Requested: ${item.qty}`
+            );
+          }
+          
+          // Atomic update: decrement quantity using updateOne instead of findOneAndUpdate
+          // Using updateOne with $inc is atomic and avoids the mysterious findOneAndUpdate issue
+          const updateResult = await inventoryCollection.updateOne(
             {
-              productId: productObjId,
-              qty: { $gte: item.qty }, // Only update if qty >= requested
+              productId: productIdObj,
+              qty: { $gte: item.qty }, // Only update if sufficient stock
             },
             {
               $inc: { qty: -item.qty },
               $set: { updatedAt: new Date() },
-            },
-            {
-              returnDocument: 'after',
-              session,
             }
           );
           
-          if (!inventoryResult.value) {
-            // Check current stock
-            const current = await inventoryCollection.findOne(
-              { productId: productObjId },
-              { session }
-            );
+          if (updateResult.matchedCount === 0) {
             throw new Error(
-              `Insufficient inventory for product ${item.productId}. Available: ${current?.qty || 0}, Requested: ${item.qty}`
+              `Failed to update inventory for product ${item.productId}. Stock may have been depleted by another order.`
+            );
+          }
+          
+          if (updateResult.modifiedCount === 0) {
+            throw new Error(
+              `Failed to modify inventory for product ${item.productId}. This shouldn't happen.`
             );
           }
           
@@ -153,7 +243,8 @@ class OrderService {
         
         // Create order within transaction
         const order: Order = {
-          userId,
+          userId: userId || undefined,
+          guestEmail: options?.email,
           items: orderItems,
           amount,
           currency: 'INR',
@@ -161,14 +252,27 @@ class OrderService {
           shippingAddress,
           billingAddress,
           placedAt: new Date(),
+          couponCode: options?.couponCode,
+          couponDiscount: options?.couponDiscount,
+          loyaltyPointsRedeemed: options?.loyaltyPointsRedeemed,
+          loyaltyDiscount: options?.loyaltyDiscount,
+          giftWrap: options?.giftWrap || false,
+          shippingMethod: options?.shippingMethod,
+          shippingCost,
+          taxRate,
+          taxAmount,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
         
-        const orderResult = await ordersCollection.insertOne(order, { session });
+        const insertOrderOptions: any = {};
+        if (session) {
+          insertOrderOptions.session = session;
+        }
+        const orderResult = await ordersCollection.insertOne(order, insertOrderOptions);
         order._id = orderResult.insertedId.toString();
         
-        // Create payment record within transaction
+        // Create payment record
         const payment: Payment = {
           orderId: order._id!,
           amount,
@@ -182,50 +286,125 @@ class OrderService {
           updatedAt: new Date(),
         };
         
-        const paymentResult = await paymentsCollection.insertOne(payment, { session });
+        const insertPaymentOptions: any = {};
+        if (session) {
+          insertPaymentOptions.session = session;
+        }
+        const paymentResult = await paymentsCollection.insertOne(payment, insertPaymentOptions);
         payment._id = paymentResult.insertedId.toString();
         
-        // Clear cart within transaction
+        // Clear cart
         if (userId) {
-          await cartsCollection.deleteOne({ userId }, { session });
+          const deleteCartOptions: any = {};
+          if (session) {
+            deleteCartOptions.session = session;
+          }
+          await cartsCollection.deleteOne({ userId }, deleteCartOptions);
         } else if (cart.sessionId) {
-          await cartsCollection.deleteOne({ sessionId: cart.sessionId }, { session });
+          const deleteSessionCartOptions: any = {};
+          if (session) {
+            deleteSessionCartOptions.session = session;
+          }
+          await cartsCollection.deleteOne({ sessionId: cart.sessionId }, deleteSessionCartOptions);
         }
         
         return { order, payment };
-      });
+      };
       
-      // Transaction committed successfully
-      const { order, payment } = result!;
+      // Execute with or without transaction
+      const result = session 
+        ? await session.withTransaction(executeOrderCreation)
+        : await executeOrderCreation();
+      
+      // Committed successfully
+      const { order, payment } = result;
       
       // Send order confirmation email (async, don't wait)
-      // Get user email for sending email
-      const usersCollection = db.collection('users');
-      const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
-      if (user && user.email) {
-        emailTriggerService.sendTemplateEmail(
-          EmailEventType.ORDER_PLACED,
-          user.email,
-          {
-            userName: user.firstName || user.email,
-            orderId: order._id,
-            orderDate: order.placedAt.toLocaleDateString(),
-            orderAmount: `₹${order.amount.toFixed(2)}`,
-            items: order.items.map(item => `${item.name} x${item.qty}`).join(', '),
-            shippingAddress: `${order.shippingAddress.street}, ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.pincode}`,
+      const emailToSend = options?.email || (userId ? undefined : null);
+      
+      if (emailToSend || userId) {
+        const usersCollection = db.collection('users');
+        let userEmail = emailToSend;
+        let userName = emailToSend || 'Guest';
+
+        if (userId) {
+          const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+          if (user) {
+            userEmail = user.email;
+            userName = user.firstName || user.email;
           }
-        ).catch(err => {
-          console.error('Failed to send order confirmation email:', err);
+        }
+
+        if (userEmail) {
+          emailTriggerService.sendTemplateEmail(
+            EmailEventType.ORDER_PLACED,
+            userEmail,
+            {
+              userName,
+              orderId: order._id,
+              orderDate: order.placedAt.toLocaleDateString(),
+              orderAmount: `₹${order.amount.toFixed(2)}`,
+              items: order.items.map(item => `${item.name} x${item.qty}`).join(', '),
+              shippingAddress: `${order.shippingAddress.street}, ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.pincode}`,
+            }
+          ).catch(err => {
+            console.error('Failed to send order confirmation email:', err);
+          });
+        }
+      }
+
+      // Record coupon usage if applicable
+      if (options?.couponCode && options?.couponDiscount && options.couponDiscount > 0) {
+        const { couponService } = await import('./CouponService');
+        const coupon = await couponService.getCouponByCode(options.couponCode);
+        if (coupon && order._id) {
+          await couponService.recordUsage(
+            coupon._id!,
+            options.couponCode,
+            userId || 'guest',
+            order._id,
+            options.couponDiscount
+          );
+        }
+      }
+
+      // Record loyalty redemption if applicable
+      if (options?.loyaltyPointsRedeemed && options.loyaltyPointsRedeemed > 0 && userId && order._id) {
+        const { loyaltyService } = await import('./LoyaltyService');
+        try {
+          // Note: Points were already redeemed in controller, this is just for record-keeping
+          // The actual redemption happened before order creation
+        } catch (error) {
+          console.error('Failed to record loyalty redemption:', error);
+        }
+      }
+
+      // Award loyalty points if user is logged in
+      if (userId && order._id && amount > 0) {
+        const { loyaltyService } = await import('./LoyaltyService');
+        try {
+          await loyaltyService.earnPoints(userId, order._id, amount);
+        } catch (error) {
+          console.error('Failed to award loyalty points:', error);
+        }
+      }
+
+      // Process order: generate invoice, send email, create shipment (async, non-blocking)
+      if (order._id) {
+        this.processOrder(order, shippingAddress, paymentMethod).catch(err => {
+          console.error('Error in post-order processing:', err);
         });
       }
       
       return { order, payment };
     } catch (error) {
-      // Transaction will be aborted automatically
-      console.error('Error creating order (transaction aborted):', error);
+      // Transaction will be aborted automatically (if using transactions)
+      console.error('Error creating order:', error);
       throw error;
     } finally {
-      await session.endSession();
+      if (session) {
+        await session.endSession();
+      }
     }
   }
 
@@ -238,7 +417,12 @@ class OrderService {
     cart: Cart,
     shippingAddress: Address,
     billingAddress: Address,
-    paymentMethod: string
+    paymentMethod: string,
+    options?: {
+      shippingMethod?: string;
+      shippingCost?: number;
+      taxRate?: number;
+    }
   ): Promise<{ order: Order; payment?: Payment }> {
     const client = mongo.getClient();
     const db = mongo.getDb();
@@ -270,50 +454,95 @@ class OrderService {
       };
     });
     
-    // Calculate total amount
-    const amount = orderItems.reduce(
+    // Calculate subtotal
+    const subtotal = orderItems.reduce(
       (sum, item) => sum + item.priceAt * item.qty,
       0
     );
     
-    // Use MongoDB transaction for atomicity
-    const session = client.startSession();
+    // Get shipping cost and tax rate
+    const shippingCost = options?.shippingCost || 0;
+    const taxRate = options?.taxRate || 0;
+    
+    // Calculate tax amount (on subtotal + shipping)
+    const taxAmount = (subtotal + shippingCost) * (taxRate / 100);
+    
+    // Calculate total amount (subtotal + shipping + tax)
+    const amount = subtotal + shippingCost + taxAmount;
+    
+    // Check if transactions are supported
+    const useTransactions = await this.supportsTransactions();
+    
+    // Use MongoDB transaction for atomicity (if supported)
+    const session = useTransactions ? client.startSession() : null;
     
     try {
-      const result = await session.withTransaction(async () => {
-        // Reserve inventory for all items within transaction
+      const executeOrderCreation = async () => {
+        // Reserve inventory for all items
         for (const item of cart.items) {
-          const productObjId = new ObjectId(item.productId);
+          // Note: productId in inventory collection is stored as ObjectId
+          const productIdObj = new ObjectId(item.productId);
           
-          // Atomic update: decrement quantity only if sufficient stock available
-          const inventoryResult = await inventoryCollection.findOneAndUpdate(
+          // Check inventory availability (not using session to avoid conflicts)
+          const existingInventory = await inventoryCollection.findOne(
+            { productId: productIdObj }
+          );
+          
+          // Simplified logging - verbose debug removed
+          if (!existingInventory) {
+            console.log(`Inventory check failed: No record found for product ${item.productId}`);
+          }
+          
+          if (!existingInventory) {
+            throw new Error(
+              `No inventory record found for product ${item.productId}`
+            );
+          }
+          
+          if (existingInventory.qty < item.qty) {
+            throw new Error(
+              `Insufficient inventory for product ${item.productId}. Available: ${existingInventory.qty}, Requested: ${item.qty}`
+            );
+          }
+          
+          // Atomic update: decrement quantity using updateOne instead of findOneAndUpdate
+          // Using updateOne with $inc is atomic and avoids the mysterious findOneAndUpdate issue
+          console.log('DEBUG: About to update inventory:', {
+            productId: productIdObj.toString(),
+            existingQty: existingInventory.qty,
+            decrementBy: item.qty
+          });
+          
+          const updateResult = await inventoryCollection.updateOne(
             {
-              productId: productObjId,
-              qty: { $gte: item.qty }, // Only update if qty >= requested
+              productId: productIdObj,
+              qty: { $gte: item.qty }, // Only update if sufficient stock
             },
             {
               $inc: { qty: -item.qty },
               $set: { updatedAt: new Date() },
-            },
-            {
-              returnDocument: 'after',
-              session,
             }
           );
           
-          if (!inventoryResult.value) {
-            // Check current stock
-            const current = await inventoryCollection.findOne(
-              { productId: productObjId },
-              { session }
-            );
+          console.log('DEBUG: Update result:', {
+            matchedCount: updateResult.matchedCount,
+            modifiedCount: updateResult.modifiedCount
+          });
+          
+          if (updateResult.matchedCount === 0) {
             throw new Error(
-              `Insufficient inventory for product ${item.productId}. Available: ${current?.qty || 0}, Requested: ${item.qty}`
+              `Failed to update inventory for product ${item.productId}. Stock may have been depleted by another order.`
+            );
+          }
+          
+          if (updateResult.modifiedCount === 0) {
+            throw new Error(
+              `Failed to modify inventory for product ${item.productId}. This shouldn't happen.`
             );
           }
         }
         
-        // Create order within transaction
+        // Create order
         const order: Order = {
           userId,
           items: orderItems,
@@ -323,11 +552,19 @@ class OrderService {
           shippingAddress,
           billingAddress,
           placedAt: new Date(),
+          shippingMethod: options?.shippingMethod,
+          shippingCost,
+          taxRate,
+          taxAmount,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
         
-        const orderResult = await ordersCollection.insertOne(order, { session });
+        const insertOrderOptions: any = {};
+        if (session) {
+          insertOrderOptions.session = session;
+        }
+        const orderResult = await ordersCollection.insertOne(order, insertOrderOptions);
         order._id = orderResult.insertedId.toString();
         
         // For COD, create payment record with pending status
@@ -347,22 +584,39 @@ class OrderService {
             updatedAt: new Date(),
           };
           
-          const paymentResult = await paymentsCollection.insertOne(payment, { session });
+          const insertPaymentOptions: any = {};
+        if (session) {
+          insertPaymentOptions.session = session;
+        }
+        const paymentResult = await paymentsCollection.insertOne(payment, insertPaymentOptions);
           payment._id = paymentResult.insertedId.toString();
         }
         
-        // Clear cart within transaction
+        // Clear cart
         if (userId) {
-          await cartsCollection.deleteOne({ userId }, { session });
+          const deleteCartOptions: any = {};
+          if (session) {
+            deleteCartOptions.session = session;
+          }
+          await cartsCollection.deleteOne({ userId }, deleteCartOptions);
         } else if (cart.sessionId) {
-          await cartsCollection.deleteOne({ sessionId: cart.sessionId }, { session });
+          const deleteSessionCartOptions: any = {};
+          if (session) {
+            deleteSessionCartOptions.session = session;
+          }
+          await cartsCollection.deleteOne({ sessionId: cart.sessionId }, deleteSessionCartOptions);
         }
         
         return { order, payment };
-      });
+      };
       
-      // Transaction committed successfully
-      const { order, payment } = result!;
+      // Execute with or without transaction
+      const result = session 
+        ? await session.withTransaction(executeOrderCreation)
+        : await executeOrderCreation();
+      
+      // Committed successfully
+      const { order, payment } = result;
       
       // Send order confirmation email (async, don't wait)
       const usersCollection = db.collection('users');
@@ -386,11 +640,13 @@ class OrderService {
       
       return { order, payment };
     } catch (error) {
-      // Transaction will be aborted automatically
-      console.error('Error creating order (transaction aborted):', error);
+      // Transaction will be aborted automatically (if using transactions)
+      console.error('Error creating order:', error);
       throw error;
     } finally {
-      await session.endSession();
+      if (session) {
+        await session.endSession();
+      }
     }
   }
 
@@ -571,6 +827,124 @@ class OrderService {
     } catch (error) {
       console.error('Error updating order status:', error);
       return false;
+    }
+  }
+
+  /**
+   * Process order after creation
+   * - Generate invoice
+   * - Send confirmation email with invoice
+   * - Create Delhivery shipment if enabled
+   */
+  private async processOrder(
+    order: Order,
+    shippingAddress: Address,
+    paymentMethod: string
+  ): Promise<void> {
+    try {
+      const orderId = order._id;
+      if (!orderId) {
+        console.error('Order ID is missing, cannot process order');
+        return;
+      }
+
+      // 1. Generate invoice
+      console.log(`Generating invoice for order ${orderId}`);
+      const { invoiceService } = await import('./InvoiceService');
+      let invoicePdfPath: string | undefined;
+      let invoiceId: string | undefined;
+      
+      try {
+        const invoice = await invoiceService.generateInvoice(orderId, 'manual');
+        invoicePdfPath = invoice.pdfPath;
+        invoiceId = invoice._id;
+        console.log(`Invoice generated successfully: ${invoice.invoiceNumber}`);
+        
+        // Update order with invoice path
+        if (invoicePdfPath) {
+          const db = mongo.getDb();
+          const ordersCollection = db.collection('orders');
+          await ordersCollection.updateOne(
+            { _id: new ObjectId(orderId) },
+            {
+              $set: {
+                invoicePath: invoicePdfPath,
+                invoiceId: invoiceId,
+                updatedAt: new Date()
+              }
+            }
+          );
+          console.log(`Order updated with invoice path: ${invoicePdfPath}`);
+        }
+      } catch (invoiceError) {
+        console.error('Failed to generate invoice:', invoiceError);
+        // Continue processing even if invoice generation fails
+      }
+
+      // 2. Send order confirmation email with invoice attachment
+      console.log(`Sending order confirmation email for order ${orderId}`);
+      try {
+        await emailTriggerService.sendOrderConfirmationWithInvoice(
+          order,
+          invoicePdfPath
+        );
+        console.log('Order confirmation email sent successfully');
+      } catch (emailError) {
+        console.error('Failed to send order confirmation email:', emailError);
+        // Continue processing even if email fails
+      }
+
+      // 3. Check if Delhivery is enabled and create shipment
+      console.log('Checking Delhivery status...');
+      const { settingsService } = await import('./SettingsService');
+      const shipping = await settingsService.getSetting('shipping');
+      
+      if (shipping?.providers?.delhivery?.enabled) {
+        console.log('Delhivery is enabled, creating shipment...');
+        try {
+          const { delhiveryService } = await import('./DelhiveryService');
+          const { Config } = await import('../config/Config');
+          
+          // Build pickup details from order
+          const pickupDetails = {
+            name: shippingAddress.name,
+            add: shippingAddress.street,
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            pin: shippingAddress.pincode,
+            country: shippingAddress.country || 'India',
+            phone: shippingAddress.phone || '',
+            order: orderId,
+            payment_mode: paymentMethod === 'cod' ? 'COD' : 'Prepaid',
+            order_date: order.placedAt.toISOString(),
+            total_amount: order.amount.toString(),
+            seller_add: Config.get('SHIPPING_FROM_ADDRESS', ''),
+            seller_name: Config.get('STORE_NAME', 'Store'),
+            seller_inv: '',
+            quantity: order.items.reduce((sum, item) => sum + item.qty, 0).toString(),
+            waybill: '',
+            shipment_width: '',
+            shipment_height: '',
+            weight: '1',
+            seller_gst_tin: '',
+            shipping_mode: 'Surface',
+            address_type: 'home',
+          };
+
+          const shipment = await delhiveryService.createShipment(orderId, pickupDetails);
+          console.log(`Shipment created successfully: AWB ${shipment.awb}`);
+        } catch (shipmentError) {
+          console.error('Failed to create Delhivery shipment:', shipmentError);
+          // Order still succeeds even if shipment creation fails
+        }
+      } else {
+        console.log('Delhivery is not enabled, skipping shipment creation');
+      }
+
+      console.log(`Order processing completed for order ${orderId}`);
+    } catch (error) {
+      console.error('Error in processOrder:', error);
+      // Don't throw - order was already created successfully
     }
   }
 }

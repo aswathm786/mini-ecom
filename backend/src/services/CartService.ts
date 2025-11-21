@@ -39,9 +39,15 @@ class CartService {
     } else if (sessionId) {
       const cart = await cartsCollection.findOne({ sessionId });
       return cart;
+    } else {
+      // For anonymous users (both userId and sessionId are null/undefined)
+      // Find cart where both are null
+      const cart = await cartsCollection.findOne({ 
+        userId: null, 
+        sessionId: null 
+      });
+      return cart;
     }
-    
-    return null;
   }
 
   /**
@@ -61,8 +67,46 @@ class CartService {
       );
       return cart;
     } else {
-      const result = await cartsCollection.insertOne(cart);
-      cart._id = result.insertedId.toString();
+      // Build filter for finding existing cart
+      // MongoDB stores undefined as null, so we match null explicitly
+      const filter: any = {
+        userId: cart.userId || null,
+        sessionId: cart.sessionId || null,
+      };
+      
+      try {
+        // Use upsert to either update existing cart or create new one
+        // This prevents duplicate key errors when both userId and sessionId are null
+        const result = await cartsCollection.findOneAndUpdate(
+          filter,
+          { $set: cart },
+          { upsert: true, returnDocument: 'after' }
+        );
+        
+        if (result) {
+          cart._id = result._id?.toString();
+          return cart;
+        }
+      } catch (error: any) {
+        // If upsert fails due to duplicate key (race condition), find and update
+        if (error.code === 11000) {
+          const existingCart = await cartsCollection.findOne(filter);
+          if (existingCart) {
+            cart._id = existingCart._id?.toString();
+            await cartsCollection.updateOne(
+              { _id: existingCart._id },
+              { $set: cart }
+            );
+            return cart;
+          }
+        }
+        // Re-throw if it's not a duplicate key error or if cart wasn't found
+        throw error;
+      }
+      
+      // Fallback: should not reach here, but handle it just in case
+      const insertResult = await cartsCollection.insertOne(cart);
+      cart._id = insertResult.insertedId.toString();
       return cart;
     }
   }
@@ -78,12 +122,27 @@ class CartService {
     productPrice: number,
     productName?: string
   ): Promise<Cart> {
-    const cart = await this.getCart(userId, sessionId) || {
-      userId,
-      sessionId,
+    // Validate and sanitize inputs
+    const qty = typeof quantity === 'number' && quantity > 0 ? Math.floor(quantity) : 1;
+    const price = typeof productPrice === 'number' && productPrice >= 0 ? productPrice : 0;
+    
+    // Get existing cart or create new one
+    // Explicitly set null for undefined values so MongoDB can match them
+    const existingCart = await this.getCart(userId, sessionId);
+    const cart = existingCart || {
+      userId: userId || null,
+      sessionId: sessionId || null,
       items: [],
       updatedAt: new Date(),
     };
+    
+    // Clean up any corrupted items (qty should be a positive number)
+    cart.items = cart.items.filter(item => 
+      typeof item.qty === 'number' && item.qty > 0 && item.productId
+    ).map(item => ({
+      ...item,
+      qty: Math.floor(item.qty), // Ensure qty is an integer
+    }));
     
     // Check if item already exists
     const existingIndex = cart.items.findIndex(
@@ -91,19 +150,26 @@ class CartService {
     );
     
     if (existingIndex >= 0) {
-      // Update quantity
-      cart.items[existingIndex].qty += quantity;
+      // Update quantity - increment existing quantity
+      cart.items[existingIndex].qty += qty;
+      // Update price and name if they've changed (use latest values)
+      cart.items[existingIndex].priceAt = price;
+      if (productName) {
+        cart.items[existingIndex].name = productName;
+      }
     } else {
       // Add new item
       cart.items.push({
         productId,
-        qty: quantity,
-        priceAt: productPrice,
+        qty,
+        priceAt: price,
         name: productName,
       });
     }
     
-    return await this.saveCart(cart);
+    // Save cart and return updated cart
+    const savedCart = await this.saveCart(cart);
+    return savedCart;
   }
 
   /**

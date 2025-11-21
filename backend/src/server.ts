@@ -12,12 +12,13 @@
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
-import * as cookieParser from 'cookie-parser';
+import cookieParser from 'cookie-parser';
 import { mongo } from './db/Mongo';
 import { settingsService } from './services/SettingsService';
 import { Config } from './config/Config';
-import { setupHelmet, setupCors, generalRateLimiter } from './middleware/Security';
+import { setupHelmet, setupCors } from './middleware/Security';
 import routes from './routes';
+import { maintenanceModeGuard } from './middleware/MaintenanceMode';
 
 const app: Express = express();
 
@@ -28,15 +29,21 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Cookie parser
+// Cookie parser - must be before CORS to ensure cookies are parsed correctly
 app.use(cookieParser());
 
 // Security middlewares
+// Note: Cookie parser is placed before CORS to ensure cookies are available
+// for CORS credential handling
 setupHelmet(app);
 setupCors(app);
 
-// General rate limiting (applied to all routes)
-app.use(generalRateLimiter);
+// Note: Rate limiting is applied selectively to specific route groups
+// Public/common endpoints use lenient rate limiting
+// Authentication endpoints use strict rate limiting
+
+// Maintenance mode
+app.use(maintenanceModeGuard);
 
 // API routes
 app.use('/api', routes);
@@ -78,6 +85,10 @@ async function startServer(): Promise<void> {
     
     // Load runtime settings from database
     await settingsService.loadSettings();
+    
+    // Initialize default country (India)
+    const { CountryController } = await import('./controllers/CountryController');
+    await CountryController.initializeDefaultCountry();
     
     // Start Express server
     const port = Config.PORT;

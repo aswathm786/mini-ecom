@@ -4,7 +4,7 @@
  * Manages admin order operations: list, view, update status, manual capture, refund, create shipment.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAdminApi } from './useAdminApi';
 
 export interface Order {
@@ -49,6 +49,7 @@ interface UseOrdersAdminParams {
   search?: string;
   fromDate?: string;
   toDate?: string;
+  userId?: string;
 }
 
 interface UseOrdersAdminResult {
@@ -64,8 +65,6 @@ interface UseOrdersAdminResult {
   updateStatus: (orderId: string, status: string) => Promise<boolean>;
   manualCapture: (orderId: string) => Promise<boolean>;
   createRefund: (orderId: string, amount: number, reason: string) => Promise<any>;
-  generateInvoice: (orderId: string) => Promise<any>;
-  sendInvoice: (orderId: string) => Promise<boolean>;
 }
 
 export function useOrdersAdmin(params: UseOrdersAdminParams = {}): UseOrdersAdminResult {
@@ -77,8 +76,17 @@ export function useOrdersAdmin(params: UseOrdersAdminParams = {}): UseOrdersAdmi
   const [page, setPage] = useState(params.page || 1);
   const [pages, setPages] = useState(0);
   const [filters, setFilters] = useState<Partial<UseOrdersAdminParams>>(params);
+  
+  // Use ref to track if we're currently fetching to prevent concurrent requests
+  const isFetchingRef = useRef(false);
 
   const fetchOrders = useCallback(async () => {
+    // Prevent concurrent requests
+    if (isFetchingRef.current) {
+      return;
+    }
+    
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -91,17 +99,30 @@ export function useOrdersAdmin(params: UseOrdersAdminParams = {}): UseOrdersAdmi
       if (filters.search) queryParams.search = filters.search;
       if (filters.fromDate) queryParams.fromDate = filters.fromDate;
       if (filters.toDate) queryParams.toDate = filters.toDate;
+      if (filters.userId) queryParams.userId = filters.userId;
 
       const data = await api.get<{ items: Order[]; total: number; pages: number }>('/orders', queryParams);
       setOrders(data.items);
       setTotal(data.total);
       setPages(data.pages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch orders');
+      // Only set error if it's not a network error that would cause infinite retries
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch orders';
+      if (!errorMessage.includes('ERR_INSUFFICIENT_RESOURCES') && !errorMessage.includes('Failed to fetch')) {
+        setError(errorMessage);
+      } else {
+        console.error('Network error fetching orders:', err);
+        setError('Network error. Please refresh the page.');
+      }
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [api, page, filters, params.limit]);
+  }, [api, page, filters.status, filters.search, filters.fromDate, filters.toDate, filters.userId, params.limit]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const updateStatus = useCallback(async (orderId: string, status: string): Promise<boolean> => {
     try {
@@ -136,26 +157,6 @@ export function useOrdersAdmin(params: UseOrdersAdminParams = {}): UseOrdersAdmi
     }
   }, [api, fetchOrders]);
 
-  const generateInvoice = useCallback(async (orderId: string): Promise<any> => {
-    try {
-      const invoice = await api.post(`/orders/${orderId}/generate-invoice`);
-      return invoice;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate invoice');
-      throw err;
-    }
-  }, [api]);
-
-  const sendInvoice = useCallback(async (orderId: string): Promise<boolean> => {
-    try {
-      await api.post(`/orders/${orderId}/send-invoice`);
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send invoice');
-      return false;
-    }
-  }, [api]);
-
   return {
     orders,
     loading,
@@ -169,8 +170,6 @@ export function useOrdersAdmin(params: UseOrdersAdminParams = {}): UseOrdersAdmi
     updateStatus,
     manualCapture,
     createRefund,
-    generateInvoice,
-    sendInvoice,
   };
 }
 

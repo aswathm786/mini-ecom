@@ -17,8 +17,8 @@ export interface ThemeSettings {
   'theme.textLight'?: string;
   'theme.logo'?: string;
   'theme.favicon'?: string;
-  'theme.siteName'?: string;
   'theme.siteTagline'?: string;
+  'site.name'?: string;
   'theme.heroImage'?: string;
   'theme.aboutImage'?: string;
   'theme.footerImage'?: string;
@@ -30,6 +30,7 @@ export interface ThemeSettings {
   'theme.borderRadius'?: 'none' | 'sm' | 'md' | 'lg' | 'xl';
   'theme.shadow'?: 'none' | 'sm' | 'md' | 'lg';
   'theme.animation'?: boolean;
+  'store.name'?: string; // Include store name for display purposes
 }
 
 interface ThemeContextType {
@@ -42,32 +43,64 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<ThemeSettings | null>(null);
+  const [storeName, setStoreName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [storeSettingsName, setStoreSettingsName] = useState<string | null>(null);
 
   useEffect(() => {
     loadThemeSettings();
+    loadStoreName();
+    loadStoreSettings();
   }, []);
 
   useEffect(() => {
     if (settings) {
       applyTheme();
     }
-  }, [settings]);
+  }, [settings, storeName, storeSettingsName]);
 
   const loadThemeSettings = async () => {
     try {
-      // Try to get from public API (no auth required for theme settings)
       const response = await fetch('/api/theme-settings');
       if (response.ok) {
         const data = await response.json();
         if (data.ok && data.data) {
-          setSettings(data.data);
+          const normalized = normalizeTheme(data.data);
+          if (normalized) {
+            setSettings(normalized);
+            // Extract site.name or store.name if present in the response
+            if (data.data['site.name']) {
+              setStoreName(data.data['site.name']);
+            } else if (data.data['store.name']) {
+              setStoreName(data.data['store.name']);
+            }
+            return;
+          }
         }
       }
     } catch (error) {
       console.error('Failed to load theme settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadStoreName = async () => {
+    // store.name is now included in theme-settings response from backend
+    // No need to fetch separately
+  };
+
+  const loadStoreSettings = async () => {
+    try {
+      const response = await fetch('/api/store-settings');
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.name) {
+          setStoreSettingsName(data.name);
+        }
+      }
+    } catch (error) {
+      // Silently fail - store settings are optional
     }
   };
 
@@ -96,7 +129,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--color-text-light', settings['theme.textLight']);
     }
 
-    // Apply favicon
+    // Apply favicon (will be overridden by store settings if available)
     if (settings['theme.favicon']) {
       let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
       if (!link) {
@@ -107,10 +140,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       link.href = settings['theme.favicon'];
     }
 
-    // Apply site name
-    if (settings['theme.siteName']) {
-      document.title = settings['theme.siteName'];
-    }
+    // Note: GlobalLayout handles setting document.title with store branding name
+    // We don't set it here to avoid conflicts - GlobalLayout is the primary source
 
     // Apply layout classes
     const body = document.body;
@@ -149,5 +180,29 @@ export function useTheme() {
     throw new Error('useTheme must be used within a ThemeProvider');
   }
   return context;
+}
+
+function normalizeTheme(data: any): ThemeSettings | null {
+  if (!data) return null;
+  // Legacy map
+  if (data['theme.primary']) {
+    return data as ThemeSettings;
+  }
+
+  if (data.palette) {
+    const settings: ThemeSettings = {
+      'theme.primary': data.palette.primary,
+      'theme.secondary': data.palette.secondary,
+      'theme.accent': data.palette.accent,
+      'theme.background': data.palette.background,
+      'theme.text': data.palette.text,
+      'site.name': data.name,
+      'theme.logo': data.images?.logo,
+      'theme.favicon': data.images?.favicon,
+    };
+    return settings;
+  }
+
+  return null;
 }
 

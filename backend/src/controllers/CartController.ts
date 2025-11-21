@@ -49,11 +49,19 @@ export class CartController {
       );
       
       const enrichedItems = cart.items.map(item => {
-        const product = products.find(p => p?._id === item.productId);
-        const inventory = inventoryService.getInventory(item.productId);
+        // Handle both string and ObjectId comparisons
+        const product = products.find(p => {
+          const productId = p?._id?.toString();
+          const itemId = item.productId?.toString();
+          return productId === itemId;
+        });
+        
+        // Ensure qty is a valid number (fix any corrupted data)
+        const qty = typeof item.qty === 'number' && item.qty > 0 ? item.qty : 0;
         
         return {
           ...item,
+          qty, // Use validated qty
           product: product ? {
             id: product._id,
             name: product.name,
@@ -61,7 +69,7 @@ export class CartController {
             images: product.images,
           } : null,
         };
-      });
+      }).filter(item => item.qty > 0); // Remove items with invalid quantities
       
       res.json({
         ok: true,
@@ -118,9 +126,37 @@ export class CartController {
         product.name
       );
       
+      // Enrich cart items with product details (similar to getCart)
+      const productIds = cart.items.map(item => item.productId);
+      const products = await Promise.all(
+        productIds.map(id => productService.getProductById(id))
+      );
+      
+      const enrichedItems = cart.items.map(item => {
+        const productData = products.find(p => {
+          // Handle both string and ObjectId comparisons
+          const productId = p?._id?.toString();
+          const itemId = item.productId?.toString();
+          return productId === itemId;
+        });
+        
+        return {
+          ...item,
+          product: productData ? {
+            id: productData._id,
+            name: productData.name,
+            slug: productData.slug,
+            images: productData.images,
+          } : null,
+        };
+      });
+      
       res.json({
         ok: true,
-        data: cart,
+        data: {
+          ...cart,
+          items: enrichedItems,
+        },
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

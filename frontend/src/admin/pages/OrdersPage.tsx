@@ -4,8 +4,8 @@
  * List orders with filters, search, and bulk actions.
  */
 
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useOrdersAdmin } from '../hooks/useOrdersAdmin';
 import { DatasetTable } from '../components/DatasetTable';
 import { FiltersBar } from '../components/FiltersBar';
@@ -13,11 +13,33 @@ import { formatCurrency } from '../../lib/format';
 
 export function OrdersPage() {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<Record<string, any>>({});
-  const { orders, loading, error, total, page, pages, setPage, setFilters: setOrdersFilters, refetch } = useOrdersAdmin({
+  const location = useLocation();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const initialUserId = searchParams.get('userId') || '';
+  const [filters, setFilters] = useState<Record<string, any>>(
+    initialUserId ? { userId: initialUserId } : {}
+  );
+  const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
+  const {
+    orders,
+    loading,
+    error,
+    total,
+    page,
+    pages,
+    setPage,
+    setFilters: setOrdersFilters,
+  } = useOrdersAdmin({
     page: 1,
     limit: 20,
+    userId: initialUserId || undefined,
   });
+
+  useEffect(() => {
+    if (initialUserId) {
+      setOrdersFilters((prev) => ({ ...prev, userId: initialUserId }));
+    }
+  }, [initialUserId, setOrdersFilters]);
 
   const handleFilterChange = (key: string, value: any) => {
     const newFilters = { ...filters, [key]: value };
@@ -30,6 +52,36 @@ export function OrdersPage() {
     setFilters({});
     setOrdersFilters({});
     setPage(1);
+  };
+
+  const handleDownloadInvoice = async (orderId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setDownloadingInvoice(orderId);
+    
+    try {
+      const response = await fetch(`/api/orders/${orderId}/invoice`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `invoice-${orderId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        throw new Error('Failed to download invoice');
+      }
+    } catch (err) {
+      console.error('Error downloading invoice:', err);
+      alert('Failed to download invoice. Please try again.');
+    } finally {
+      setDownloadingInvoice(null);
+    }
   };
 
   const statusOptions = [
@@ -91,6 +143,19 @@ export function OrdersPage() {
         </span>
       ),
     },
+    {
+      key: 'invoice',
+      label: 'Invoice',
+      render: (order: any) => (
+        <button
+          onClick={(e) => handleDownloadInvoice(order._id, e)}
+          disabled={downloadingInvoice === order._id}
+          className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {downloadingInvoice === order._id ? 'Downloading...' : 'Download PDF'}
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -115,6 +180,12 @@ export function OrdersPage() {
             key: 'toDate',
             label: 'To Date',
             type: 'date',
+          },
+          {
+            key: 'userId',
+            label: 'User ID',
+            type: 'text',
+            placeholder: 'Filter by user ID…',
           },
         ]}
       />

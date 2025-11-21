@@ -85,7 +85,7 @@ export const uploadMultiple = multer({
 export function getFileUrl(filename: string): string {
   const appUrl = Config.APP_URL;
   const apiUrl = Config.API_URL;
-  // Serve via API endpoint
-  return `${apiUrl}/uploads/${filename}`;
+  // Serve via API endpoint (route is /api/uploads/:filename)
+  return `${apiUrl}/api/uploads/${filename}`;
 }
 

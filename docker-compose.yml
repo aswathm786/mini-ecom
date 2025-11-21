@@ -54,10 +54,11 @@ services:
       - api_storage:/app/storage
       - api_logs:/app/storage/logs
     ports:
-      - "${API_PORT:-3000}:3000"
+      - "${API_PORT:-3001}:3001"
     environment:
       NODE_ENV: ${APP_ENV:-production}
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost:3001}
+      PORT: ${PORT:-3001}
       MONGO_URI: ${MONGO_URI:-mongodb://admin:changeme@mongo:27017/miniecom?authSource=admin}
       JWT_SECRET: ${JWT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
@@ -123,7 +124,7 @@ services:
       - "${FRONTEND_PORT:-80}:80"
     environment:
       - APP_URL=${APP_URL:-http://localhost}
-      - API_URL=${API_URL:-http://api:3000}
+      - API_URL=${API_URL:-http://api:3001}
     networks:
       - miniecom_network
     depends_on:

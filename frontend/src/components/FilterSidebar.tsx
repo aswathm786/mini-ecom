@@ -1,28 +1,68 @@
 /**
  * Filter Sidebar Component
  * 
- * Filter UI for categories and price range (UI only, backend filters may be stubbed).
+ * Filter UI for categories and price range with multiple category selection.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { csrfFetch } from '../lib/csrfFetch';
+
+interface Category {
+  _id: string;
+  name: string;
+  slug: string;
+}
 
 interface FilterSidebarProps {
-  categories?: Array<{ id: string; name: string; slug: string }>;
-  selectedCategory?: string;
-  onCategoryChange?: (categoryId: string | null) => void;
+  selectedCategories?: string[];
+  onCategoryChange?: (categoryIds: string[]) => void;
   priceRange?: { min: number; max: number };
   onPriceRangeChange?: (min: number, max: number) => void;
 }
 
 export function FilterSidebar({
-  categories = [],
-  selectedCategory,
+  selectedCategories = [],
   onCategoryChange,
   priceRange,
   onPriceRangeChange,
 }: FilterSidebarProps) {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
   const [localPriceMin, setLocalPriceMin] = useState(priceRange?.min?.toString() || '');
   const [localPriceMax, setLocalPriceMax] = useState(priceRange?.max?.toString() || '');
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const loadCategories = async () => {
+    setLoadingCategories(true);
+    try {
+      const response = await csrfFetch('/api/categories');
+      if (response.ok && response.data) {
+        setCategories(Array.isArray(response.data) ? response.data : []);
+      }
+    } catch (err) {
+      console.error('Failed to load categories:', err);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
+  const handleCategoryToggle = (categoryId: string) => {
+    const newSelected = selectedCategories.includes(categoryId)
+      ? selectedCategories.filter(id => id !== categoryId)
+      : [...selectedCategories, categoryId];
+    onCategoryChange?.(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedCategories.length === categories.length) {
+      onCategoryChange?.([]);
+    } else {
+      onCategoryChange?.(categories.map(c => c._id));
+    }
+  };
 
   const handlePriceApply = () => {
     const min = localPriceMin ? parseFloat(localPriceMin) : 0;
@@ -36,33 +76,37 @@ export function FilterSidebar({
 
       {/* Categories */}
       <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">Categories</h3>
-        <div className="space-y-2">
-          <label className="flex items-center">
-            <input
-              type="radio"
-              name="category"
-              value=""
-              checked={!selectedCategory}
-              onChange={() => onCategoryChange?.(null)}
-              className="mr-2"
-            />
-            <span className="text-sm text-gray-700">All Categories</span>
-          </label>
-          {categories.map((category) => (
-            <label key={category.id} className="flex items-center">
-              <input
-                type="radio"
-                name="category"
-                value={category.id}
-                checked={selectedCategory === category.id}
-                onChange={() => onCategoryChange?.(category.id)}
-                className="mr-2"
-              />
-              <span className="text-sm text-gray-700">{category.name}</span>
-            </label>
-          ))}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-gray-700">Categories</h3>
+          {categories.length > 0 && (
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              className="text-xs text-primary-600 hover:text-primary-700"
+            >
+              {selectedCategories.length === categories.length ? 'Deselect All' : 'Select All'}
+            </button>
+          )}
         </div>
+        {loadingCategories ? (
+          <div className="text-sm text-gray-500">Loading categories...</div>
+        ) : categories.length === 0 ? (
+          <div className="text-sm text-gray-500">No categories available</div>
+        ) : (
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {categories.map((category) => (
+              <label key={category._id} className="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
+                <input
+                  type="checkbox"
+                  checked={selectedCategories.includes(category._id)}
+                  onChange={() => handleCategoryToggle(category._id)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <span className="ml-2 text-sm text-gray-700">{category.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Price Range */}

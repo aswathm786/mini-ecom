@@ -30,6 +30,7 @@ export function CatalogPage() {
 
   const loadProducts = async () => {
     setLoading(true);
+    setError(null);
     try {
       const queryParams: Record<string, any> = {
         page: page.toString(),
@@ -38,10 +39,10 @@ export function CatalogPage() {
       if (filters.search) queryParams.search = filters.search;
       if (filters.category) queryParams.category = filters.category;
 
-      const data = await api.get<{ items: any[]; total: number; pages: number }>('/products', queryParams);
-      setProducts(data.items);
-      setTotal(data.total);
-      setPages(data.pages);
+      const data = await api.get<{ items?: any[]; total?: number; pages?: number }>('/products', queryParams);
+      setProducts(data.items ?? []);
+      setTotal(data.total ?? 0);
+      setPages(data.pages ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch products');
     } finally {
@@ -135,6 +136,9 @@ export function CatalogPage() {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Catalog</h1>
+        <Button onClick={() => navigate('/admin/catalog/new')}>
+          Create Product
+        </Button>
       </div>
 
       <FiltersBar

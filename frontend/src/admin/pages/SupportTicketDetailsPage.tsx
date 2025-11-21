@@ -63,14 +63,38 @@ export function SupportTicketDetailsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.get<{ ok: boolean; data: Ticket }>(`/support/tickets/${id}`);
-      if (response.ok && response.data) {
-        setTicket(response.data.data);
+      // api.get returns response.data from csrfFetch
+      // Backend returns: { ok: true, data: Ticket }
+      // csrfFetch returns: { ok: true, data: { ok: true, data: Ticket } }
+      // api.get extracts: { ok: true, data: Ticket }
+      const response = await api.get<any>(`/support/tickets/${id}`);
+      
+      console.log('Ticket response:', response);
+      
+      // Handle different response structures
+      if (response && typeof response === 'object') {
+        // Check if response has nested data structure { ok: true, data: Ticket }
+        if (response.ok && response.data) {
+          setTicket(response.data);
+        } else if (response._id || response.subject) {
+          // Response is the ticket directly (no wrapper)
+          setTicket(response as Ticket);
+        } else if (response.data && (response.data._id || response.data.subject)) {
+          // Response has data property with ticket
+          setTicket(response.data as Ticket);
+        } else {
+          setError(response.error || 'Ticket not found');
+        }
       } else {
         setError('Ticket not found');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load ticket');
+    } catch (err: any) {
+      // api.get throws AdminApiError if response.ok is false
+      // Extract error message from the error response
+      const errorMessage = err?.response?.error || err?.message || 'Failed to load ticket';
+      setError(errorMessage);
+      console.error('Error loading ticket:', err);
+      console.error('Error response:', err?.response);
     } finally {
       setLoading(false);
     }

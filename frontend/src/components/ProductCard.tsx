@@ -5,9 +5,11 @@
  */
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../lib/format';
 import { useCart } from '../hooks/useCart';
+import { useAuth } from '../contexts/AuthContext';
+import { normalizeImageUrl } from '../lib/imageUtils';
 import { Button } from './Button';
 import { Product } from '../hooks/useProducts';
 
@@ -17,23 +19,42 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onAddToCart }: ProductCardProps) {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const { addItem } = useCart();
   const [isAdding, setIsAdding] = useState(false);
 
   const handleAddToCart = async () => {
+    if (!product._id) return;
+
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      // Redirect to login with current product page as redirect parameter
+      const currentPath = `/product/${product.slug}`;
+      navigate(`/login?redirect=${encodeURIComponent(currentPath)}`);
+      return;
+    }
+    
     setIsAdding(true);
     try {
-      await addItem(product._id, 1);
+      // Ensure productId is a string
+      const productId = typeof product._id === 'string' ? product._id : String(product._id);
+      await addItem(productId, 1);
       onAddToCart?.();
     } catch (error) {
       console.error('Error adding to cart:', error);
+      // If error is due to authentication, redirect to login
+      if (error instanceof Error && (error.message.includes('Authentication') || error.message.includes('401'))) {
+        const currentPath = `/product/${product.slug}`;
+        navigate(`/login?redirect=${encodeURIComponent(currentPath)}`);
+      }
     } finally {
       setIsAdding(false);
     }
   };
 
   const isInStock = product.inventory && product.inventory.qty > 0;
-  const mainImage = product.images?.[0]?.url || '/placeholder.png';
+  const mainImage = normalizeImageUrl(product.images?.[0]?.url);
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">

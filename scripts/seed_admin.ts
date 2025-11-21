@@ -14,9 +14,10 @@
 
 import { MongoClient, Db } from 'mongodb';
 import * as argon2 from 'argon2';
+import * as path from 'path';
 
-// Load environment variables
-require('dotenv').config();
+// Load environment variables from root .env
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/handmade_harmony';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';

@@ -16,6 +16,11 @@ export interface ProductImage {
   alt?: string;
 }
 
+export interface ProductFAQ {
+  question: string;
+  answer: string;
+}
+
 export interface Product {
   _id?: string;
   name: string;
@@ -24,11 +29,13 @@ export interface Product {
   price: number;
   sku?: string;
   status: 'active' | 'inactive' | 'draft';
-  categoryId?: string;
+  categoryId?: string; // Legacy field for backward compatibility
+  categoryIds?: string[]; // New field for multiple categories
   images: ProductImage[];
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string;
+  faq?: ProductFAQ[]; // Product FAQs
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,12 +49,15 @@ class ProductService {
     description: string;
     price: number;
     sku?: string;
-    categoryId?: string;
+    categoryId?: string; // Legacy support
+    categoryIds?: string[]; // New multi-category support
     status?: 'active' | 'inactive' | 'draft';
     images?: Express.Multer.File[];
+    imageUrls?: string[]; // Support image URLs in addition to file uploads
     metaTitle?: string;
     metaDescription?: string;
     metaKeywords?: string;
+    faq?: ProductFAQ[]; // Product FAQs
   }): Promise<Product> {
     const db = mongo.getDb();
     const productsCollection = db.collection<Product>('products');
@@ -60,12 +70,30 @@ class ProductService {
       throw new Error('Product with this name already exists');
     }
     
-    // Process images
-    const images: ProductImage[] = (data.images || []).map(file => ({
+    // Process images from file uploads
+    const fileImages: ProductImage[] = (data.images || []).map(file => ({
       filename: file.filename,
       url: getFileUrl(file.filename),
       alt: data.name,
     }));
+    
+    // Process images from URLs
+    const urlImages: ProductImage[] = (data.imageUrls || []).map(url => ({
+      filename: url, // Use URL as filename identifier
+      url: url,
+      alt: data.name,
+    }));
+    
+    const images = [...fileImages, ...urlImages];
+    
+    // Handle categories: support both categoryId (legacy) and categoryIds (new)
+    let categoryIds: string[] | undefined;
+    if (data.categoryIds && data.categoryIds.length > 0) {
+      categoryIds = data.categoryIds.map(id => new ObjectId(id).toString());
+    } else if (data.categoryId) {
+      // Migrate single categoryId to categoryIds array for backward compatibility
+      categoryIds = [new ObjectId(data.categoryId).toString()];
+    }
     
     const product: Product = {
       name: sanitizePlainText(data.name),
@@ -74,11 +102,16 @@ class ProductService {
       price: data.price,
       sku: data.sku || undefined,
       status: data.status || 'active',
-      categoryId: data.categoryId ? new ObjectId(data.categoryId).toString() : undefined,
+      categoryId: data.categoryId ? new ObjectId(data.categoryId).toString() : undefined, // Keep for backward compatibility
+      categoryIds,
       images,
       metaTitle: data.metaTitle ? sanitizePlainText(data.metaTitle) : undefined,
       metaDescription: data.metaDescription ? sanitizePlainText(data.metaDescription) : undefined,
       metaKeywords: data.metaKeywords ? sanitizePlainText(data.metaKeywords) : undefined,
+      faq: data.faq && data.faq.length > 0 ? data.faq.map(item => ({
+        question: sanitizePlainText(item.question),
+        answer: sanitizeHtmlContent(item.answer),
+      })) : undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -99,13 +132,16 @@ class ProductService {
       description?: string;
       price?: number;
       sku?: string;
-      categoryId?: string;
+      categoryId?: string; // Legacy support
+      categoryIds?: string[]; // New multi-category support
       status?: 'active' | 'inactive' | 'draft';
       images?: Express.Multer.File[];
-      removeImages?: string[]; // Filenames to remove
+      imageUrls?: string[]; // Support image URLs
+      removeImages?: string[]; // Filenames/URLs to remove
       metaTitle?: string;
       metaDescription?: string;
       metaKeywords?: string;
+      faq?: ProductFAQ[]; // Product FAQs
     }
   ): Promise<Product | null> {
     const db = mongo.getDb();
@@ -113,7 +149,7 @@ class ProductService {
     
     try {
       const productObjId = new ObjectId(productId);
-      const existing = await productsCollection.findOne({ _id: productObjId });
+      const existing = await productsCollection.findOne({ _id: productObjId } as any);
       
       if (!existing) {
         return null;
@@ -136,8 +172,26 @@ class ProductService {
       if (data.sku !== undefined) {
         update.sku = data.sku;
       }
-      if (data.categoryId !== undefined) {
-        update.categoryId = data.categoryId ? new ObjectId(data.categoryId).toString() : undefined;
+      // Handle categories: support both categoryId (legacy) and categoryIds (new)
+      if (data.categoryIds !== undefined) {
+        if (data.categoryIds.length > 0) {
+          update.categoryIds = data.categoryIds.map(id => new ObjectId(id).toString());
+          // Also set categoryId for backward compatibility (use first category)
+          update.categoryId = update.categoryIds[0];
+        } else {
+          update.categoryIds = undefined;
+          update.categoryId = undefined;
+        }
+      } else if (data.categoryId !== undefined) {
+        // Legacy support: migrate single categoryId to categoryIds array
+        if (data.categoryId) {
+          const categoryIdStr = new ObjectId(data.categoryId).toString();
+          update.categoryIds = [categoryIdStr];
+          update.categoryId = categoryIdStr;
+        } else {
+          update.categoryIds = undefined;
+          update.categoryId = undefined;
+        }
       }
       if (data.status !== undefined) {
         update.status = data.status;
@@ -151,16 +205,25 @@ class ProductService {
       if (data.metaKeywords !== undefined) {
         update.metaKeywords = data.metaKeywords ? sanitizePlainText(data.metaKeywords) : undefined;
       }
+      if (data.faq !== undefined) {
+        update.faq = data.faq && data.faq.length > 0 ? data.faq.map(item => ({
+          question: sanitizePlainText(item.question),
+          answer: sanitizeHtmlContent(item.answer),
+        })) : undefined;
+      }
       
       // Handle images
       let images = [...existing.images];
       
-      // Remove specified images
+      // Remove specified images (by filename or URL)
       if (data.removeImages && data.removeImages.length > 0) {
-        images = images.filter(img => !data.removeImages!.includes(img.filename));
+        images = images.filter(img => 
+          !data.removeImages!.includes(img.filename) && 
+          !data.removeImages!.includes(img.url)
+        );
       }
       
-      // Add new images
+      // Add new images from file uploads
       if (data.images && data.images.length > 0) {
         const newImages = data.images.map(file => ({
           filename: file.filename,
@@ -170,14 +233,24 @@ class ProductService {
         images.push(...newImages);
       }
       
+      // Add new images from URLs
+      if (data.imageUrls && data.imageUrls.length > 0) {
+        const newUrlImages = data.imageUrls.map(url => ({
+          filename: url, // Use URL as filename identifier
+          url: url,
+          alt: update.name || existing.name,
+        }));
+        images.push(...newUrlImages);
+      }
+      
       update.images = images;
       
       await productsCollection.updateOne(
-        { _id: productObjId },
+        { _id: productObjId } as any,
         { $set: update }
       );
       
-      const updated = await productsCollection.findOne({ _id: productObjId });
+      const updated = await productsCollection.findOne({ _id: productObjId } as any);
       return updated;
     } catch (error) {
       console.error('Error updating product:', error);
@@ -194,7 +267,7 @@ class ProductService {
     
     try {
       const productObjId = new ObjectId(productId);
-      const product = await productsCollection.findOne({ _id: productObjId });
+      const product = await productsCollection.findOne({ _id: productObjId } as any);
       return product;
     } catch (error) {
       return null;
@@ -217,7 +290,8 @@ class ProductService {
    */
   async listProducts(filters: {
     q?: string;
-    categoryId?: string;
+    categoryId?: string; // Legacy single category support
+    categoryIds?: string[]; // Multiple categories support
     status?: string;
     page: number;
     limit: number;
@@ -227,26 +301,47 @@ class ProductService {
     const productsCollection = db.collection<Product>('products');
     
     const query: any = {};
+    const andConditions: any[] = [];
     
     // Search query
     if (filters.q) {
-      query.$or = [
-        { name: { $regex: filters.q, $options: 'i' } },
-        { description: { $regex: filters.q, $options: 'i' } },
-        { sku: { $regex: filters.q, $options: 'i' } },
-      ];
+      andConditions.push({
+        $or: [
+          { name: { $regex: filters.q, $options: 'i' } },
+          { description: { $regex: filters.q, $options: 'i' } },
+          { sku: { $regex: filters.q, $options: 'i' } },
+        ],
+      });
     }
     
-    // Category filter
-    if (filters.categoryId) {
-      query.categoryId = filters.categoryId;
+    // Category filter - support multiple categories
+    if (filters.categoryIds && filters.categoryIds.length > 0) {
+      andConditions.push({
+        $or: [
+          { categoryId: { $in: filters.categoryIds } },
+          { categoryIds: { $in: filters.categoryIds } },
+        ],
+      });
+    } else if (filters.categoryId) {
+      // Legacy single category support
+      andConditions.push({
+        $or: [
+          { categoryId: filters.categoryId },
+          { categoryIds: filters.categoryId },
+        ],
+      });
     }
     
-    // Status filter (default to active for public)
-    if (filters.status) {
-      query.status = filters.status;
-    } else {
+    // Combine conditions
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
+    }
+    
+    // Status filter (default to active unless explicitly requesting all)
+    if (filters.status === undefined) {
       query.status = 'active';
+    } else if (filters.status !== 'all') {
+      query.status = filters.status;
     }
     
     const [products, total] = await Promise.all([
@@ -273,11 +368,11 @@ class ProductService {
       const productObjId = new ObjectId(productId);
       
       if (hardDelete) {
-        await productsCollection.deleteOne({ _id: productObjId });
+        await productsCollection.deleteOne({ _id: productObjId } as any);
       } else {
         // Soft delete
         await productsCollection.updateOne(
-          { _id: productObjId },
+          { _id: productObjId } as any,
           { $set: { status: 'inactive', updatedAt: new Date() } }
         );
       }

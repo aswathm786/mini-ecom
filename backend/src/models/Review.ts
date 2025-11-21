@@ -12,6 +12,11 @@ export interface Review {
   title?: string;
   comment?: string;
   status: 'pending' | 'approved' | 'rejected';
+  adminReply?: {
+    message: string;
+    repliedBy: string; // Admin user ID
+    repliedAt: Date;
+  };
   createdAt: Date;
   updatedAt: Date;
 }

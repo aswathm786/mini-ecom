@@ -13,6 +13,7 @@ import { Button } from '../../components/Button';
 import { TicketCreateModal } from '../../components/modals/TicketCreateModal';
 import { useTickets } from '../../hooks/useTickets';
 import { Order } from '../../hooks/useOrders';
+import { OrderAssistPanel } from '../../components/ai/OrderAssistPanel';
 
 interface OrderDetails extends Order {
   payment?: {
@@ -280,6 +281,8 @@ export function OrderDetailsPage() {
           </div>
         </div>
       )}
+
+      <OrderAssistPanel />
 
       <TicketCreateModal
         isOpen={showReturnModal}

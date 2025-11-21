@@ -2,6 +2,15 @@
 
 Docker Compose configuration for local development of Handmade Harmony e-commerce platform.
 
+## 📚 Complete Documentation
+
+For complete Docker deployment guides and production setup, see:
+
+- **[Docker Deployment Guide](../docs/deployment/docker-deployment.md)** - Complete Docker setup for Windows and Linux
+- **[Getting Started](../docs/getting-started/README.md)** - Quick start guide
+- **[Production Checklist](../docs/deployment/production-checklist.md)** - Pre-launch checklist
+- **[Deployment Overview](../docs/deployment/README.md)** - All deployment options
+
 ## Services
 
 ### MongoDB (`mongo`)

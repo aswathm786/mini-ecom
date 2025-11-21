@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Utility scripts for Handmade Harmony",
   "scripts": {
-    "seed-admin": "ts-node seed_admin.ts"
+    "seed-admin": "ts-node seed_admin.ts",
+    "init-schema": "ts-node --project tsconfig.json init_mongodb_schema.ts"
   },
   "dependencies": {
     "mongodb": "^6.3.0",

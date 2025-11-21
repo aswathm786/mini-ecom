@@ -43,10 +43,10 @@ export function AuditLogsPage() {
       if (filters.actor) queryParams.actor = filters.actor;
       if (filters.action) queryParams.action = filters.action;
 
-      const data = await api.get<{ items: AuditLog[]; total: number; pages: number }>('/audit', queryParams);
-      setLogs(data.items);
-      setTotal(data.total);
-      setPages(data.pages);
+      const data = await api.get<{ items?: AuditLog[]; total?: number; pages?: number }>('/audit', queryParams);
+      setLogs(data.items ?? []);
+      setTotal(data.total ?? 0);
+      setPages(data.pages ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch audit logs');
     } finally {

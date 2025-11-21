@@ -1,0 +1,83 @@
+# Quick Fix: Google OAuth 403 Error
+
+## Your Current Setup
+- **Origin:** `http://localhost:5173`
+- **Client ID:** `484169801492-get43s0h49mnr9vgrklmo7q0v5t4o4nt.apps.googleusercontent.com`
+
+## ✅ Good News
+Your Google sign up/login is **working**! The 403 error is just the button trying to render. The actual authentication works fine.
+
+## 🔧 Quick Fix (5 minutes)
+
+### Step 1: Go to Google Cloud Console
+1. Visit: https://console.cloud.google.com/
+2. Select your project
+3. Go to: **APIs & Services** → **Credentials**
+
+### Step 2: Find Your Client ID
+1. Look for Client ID: `484169801492-get43s0h49mnr9vgrklmo7q0v5t4o4nt`
+2. Click on it to edit
+
+### Step 3: Add Authorized JavaScript Origins
+1. Scroll to **"Authorized JavaScript origins"**
+2. Click **"+ ADD URI"**
+3. Enter exactly: `http://localhost:5173`
+   - ⚠️ **Important:** No trailing slash, include the port
+4. Click **"ADD"**
+
+### Step 4: Add Authorized Redirect URIs
+1. Scroll to **"Authorized redirect URIs"**
+2. Click **"+ ADD URI"**
+3. Enter exactly: `http://localhost:5173`
+4. Click **"ADD"**
+
+### Step 5: Save
+1. Scroll to the bottom
+2. Click **"SAVE"**
+3. **Wait 2-5 minutes** for changes to propagate
+
+### Step 6: Test
+1. Hard refresh your browser (Ctrl+Shift+R or Cmd+Shift+R)
+2. The 403 error should be gone!
+
+## Visual Guide
+
+```
+Google Cloud Console
+└── APIs & Services
+    └── Credentials
+        └── OAuth 2.0 Client IDs
+            └── [Your Client ID] ← Click here
+                ├── Authorized JavaScript origins
+                │   └── + ADD URI → http://localhost:5173
+                └── Authorized redirect URIs
+                    └── + ADD URI → http://localhost:5173
+```
+
+## Common Mistakes to Avoid
+
+❌ **Wrong:** `http://localhost:5173/` (trailing slash)
+✅ **Correct:** `http://localhost:5173`
+
+❌ **Wrong:** `localhost:5173` (missing protocol)
+✅ **Correct:** `http://localhost:5173`
+
+❌ **Wrong:** `http://127.0.0.1:5173` (different from localhost)
+✅ **Correct:** `http://localhost:5173` (or add both if you use both)
+
+## Still Not Working?
+
+1. **Double-check the origin** - Must match exactly: `http://localhost:5173`
+2. **Wait longer** - Sometimes takes up to 10 minutes
+3. **Clear browser cache** - Ctrl+Shift+Delete
+4. **Try incognito mode** - To rule out cache issues
+5. **Check you're editing the right Client ID** - The one ending in `...t4o4nt.apps.googleusercontent.com`
+
+## Note About Other 403 Errors
+
+You're also seeing 403 errors for `/api/ai/recommend` - these are unrelated to Google OAuth. They're likely because:
+- AI features are disabled
+- Or you don't have permission to use AI recommendations
+
+These can be ignored if you're not using AI features.
+

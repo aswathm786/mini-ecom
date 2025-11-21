@@ -24,7 +24,8 @@ export interface Product {
 
 interface UseProductsParams {
   q?: string;
-  category?: string;
+  category?: string; // Legacy single category support
+  categories?: string[]; // Multiple categories support
   page?: number;
   limit?: number;
   sort?: string;
@@ -58,18 +59,25 @@ export function useProducts(params: UseProductsParams = {}): UseProductsResult {
     try {
       const queryParams = new URLSearchParams();
       if (params.q) queryParams.set('q', params.q);
-      if (params.category) queryParams.set('category', params.category);
+      // Support both single category (legacy) and multiple categories
+      if (params.categories && params.categories.length > 0) {
+        params.categories.forEach(cat => queryParams.append('category', cat));
+      } else if (params.category) {
+        queryParams.set('category', params.category);
+      }
       queryParams.set('page', page.toString());
       queryParams.set('limit', limit.toString());
       if (params.sort) queryParams.set('sort', params.sort);
 
-      const response = await csrfFetch(`/api/products?${queryParams.toString()}`);
+      const response = await csrfFetch<any>(`/api/products?${queryParams.toString()}`);
 
       if (response.ok && response.data) {
         setProducts(response.data);
-        if (response.meta) {
-          setTotal(response.meta.total || 0);
-          setPages(response.meta.pages || 0);
+        // Handle meta from response (may be nested in data or at root)
+        const meta = (response as any).meta;
+        if (meta) {
+          setTotal(meta.total || 0);
+          setPages(meta.pages || 0);
         }
       } else {
         setError(response.error || 'Failed to fetch products');
@@ -81,7 +89,7 @@ export function useProducts(params: UseProductsParams = {}): UseProductsResult {
     } finally {
       setLoading(false);
     }
-  }, [params.q, params.category, params.sort, page, limit]);
+  }, [params.q, params.category, params.categories, params.sort, page, limit]);
 
   useEffect(() => {
     fetchProducts();

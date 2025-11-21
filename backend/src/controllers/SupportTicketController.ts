@@ -10,6 +10,8 @@ import { mongo } from '../db/Mongo';
 import { ObjectId } from 'mongodb';
 import { parsePagination, getPaginationMeta } from '../helpers/pagination';
 import { sanitizePlainText, sanitizeHtmlContent } from '../helpers/sanitize';
+import { emailTriggerService } from '../services/EmailTriggerService';
+import { EmailEventType } from '../models/EmailTemplate';
 
 // Validation schemas
 const createTicketSchema = z.object({
@@ -38,7 +40,13 @@ export class SupportTicketController {
       const usersCollection = db.collection('users');
       
       const pagination = parsePagination(req.query);
-      const isAdmin = (req.user as any)?.role === 'admin';
+      const userRoles = (req.user as any)?.roles || [];
+      const directRole = (req.user as any)?.role;
+      const isAdmin =
+        directRole === 'admin' ||
+        directRole === 'root' ||
+        userRoles?.includes?.('admin') ||
+        userRoles?.includes?.('root');
       
       // Build query
       const query: any = {};
@@ -60,8 +68,10 @@ export class SupportTicketController {
           { subject: { $regex: req.query.search, $options: 'i' } },
         ];
       }
+      if (req.query.userId && isAdmin) {
+        query.userId = req.query.userId;
+      }
       
-      // Get tickets
       const tickets = await ticketsCollection
         .find(query)
         .sort({ createdAt: -1 })
@@ -71,31 +81,54 @@ export class SupportTicketController {
       
       const total = await ticketsCollection.countDocuments(query);
       
-      // Populate user emails for admin view
-      if (isAdmin) {
-        const userIds = [...new Set(tickets.map(t => t.userId))];
-        const users = await usersCollection
-          .find({ _id: { $in: userIds.map(id => new ObjectId(id)) } })
-          .toArray();
-        const userMap = new Map(users.map(u => [u._id.toString(), u.email]));
-        
-        tickets.forEach(ticket => {
-          (ticket as any).userEmail = userMap.get(ticket.userId);
-        });
+      const ticketIds = tickets.map(t => t._id?.toString()).filter(Boolean) as string[];
+
+      if (isAdmin && ticketIds.length > 0) {
+        const validUserIds = [...new Set(tickets.map(t => t.userId).filter(id => ObjectId.isValid(id)))] as string[];
+        if (validUserIds.length > 0) {
+          const users = await usersCollection
+            .find({ _id: { $in: validUserIds.map(id => new ObjectId(id)) } })
+            .project({ email: 1 })
+            .toArray();
+          const userMap = new Map(users.map(u => [u._id?.toString() || '', u.email]));
+          tickets.forEach(ticket => {
+            (ticket as any).userEmail = userMap.get(ticket.userId);
+          });
+        }
       }
-      
-      // Get reply counts
+
       const repliesCollection = db.collection('support_ticket_replies');
-      for (const ticket of tickets) {
-        const replyCount = await repliesCollection.countDocuments({ ticketId: ticket._id.toString() });
-        (ticket as any).replyCount = replyCount;
+      let replyCountsMap = new Map<string, number>();
+      if (ticketIds.length > 0) {
+        const replyCounts = await repliesCollection
+          .aggregate([
+            { $match: { ticketId: { $in: ticketIds } } },
+            { $group: { _id: '$ticketId', count: { $sum: 1 } } },
+          ])
+          .toArray();
+        replyCountsMap = new Map(replyCounts.map(rc => [rc._id, rc.count]));
       }
-      
+
+      const items = tickets.map(ticket => ({
+        _id: ticket._id?.toString() || '',
+        userId: ticket.userId,
+        userEmail: (ticket as any).userEmail,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        lastReplyAt: ticket.lastReplyAt,
+        replyCount: replyCountsMap.get(ticket._id?.toString() || '') || 0,
+      }));
+
       res.json({
         ok: true,
-        data: tickets,
-        total,
-        pages: Math.ceil(total / pagination.limit),
+        data: {
+          items,
+          total,
+          pages: Math.ceil(total / pagination.limit),
+        },
       });
     } catch (error) {
       console.error('Error listing tickets:', error);
@@ -118,7 +151,20 @@ export class SupportTicketController {
       const usersCollection = db.collection('users');
       
       const ticketId = req.params.id;
-      const isAdmin = (req.user as any)?.role === 'admin';
+      
+      // Validate ObjectId format
+      if (!ObjectId.isValid(ticketId)) {
+        res.status(400).json({ ok: false, error: 'Invalid ticket ID format' });
+        return;
+      }
+      
+      // Check if user is admin - check both direct role and roles array
+      const userRoles = (req.user as any)?.roles || [];
+      const directRole = (req.user as any)?.role;
+      const allRoles = [...new Set([...userRoles, ...(directRole ? [directRole] : [])])];
+      const isAdmin = allRoles.some(role => 
+        ['admin', 'root', 'administrator'].includes(role?.toLowerCase())
+      ) || (req.path?.startsWith('/admin')); // If accessing through admin route, consider as admin
       
       const ticket = await ticketsCollection.findOne({ _id: new ObjectId(ticketId) });
       
@@ -127,13 +173,13 @@ export class SupportTicketController {
         return;
       }
       
-      // Check permissions
+      // Check permissions - admins can see all tickets, users can only see their own
       if (!isAdmin && ticket.userId !== req.userId) {
         res.status(403).json({ ok: false, error: 'Access denied' });
         return;
       }
       
-      // Get replies
+      // Get replies - ticketId is stored as string in replies collection
       const replies = await repliesCollection
         .find({ ticketId: ticketId })
         .sort({ createdAt: 1 })
@@ -148,9 +194,23 @@ export class SupportTicketController {
       
       (ticket as any).userEmail = userMap.get(ticket.userId);
       (ticket as any).replies = replies.map(reply => ({
-        ...reply,
+        _id: reply._id?.toString() || reply._id,
+        userId: reply.userId,
         userEmail: userMap.get(reply.userId),
+        message: reply.message,
+        attachments: reply.attachments || [],
         isAdmin: (reply as any).isAdmin || false,
+        createdAt: reply.createdAt,
+      }));
+      
+      // Also include messages for user-facing API (maps isAdmin to isAgent)
+      (ticket as any).messages = replies.map(reply => ({
+        _id: reply._id?.toString() || reply._id,
+        userId: reply.userId,
+        message: reply.message,
+        attachments: reply.attachments || [],
+        isAgent: (reply as any).isAdmin || false,
+        createdAt: reply.createdAt,
       }));
       
       res.json({
@@ -239,7 +299,14 @@ export class SupportTicketController {
       
       const ticketId = req.params.id;
       const { message } = validated;
-      const isAdmin = (req.user as any)?.role === 'admin';
+      
+      // Check if user is admin - check both direct role and roles array
+      const userRoles = (req.user as any)?.roles || [];
+      const directRole = (req.user as any)?.role;
+      const allRoles = [...new Set([...userRoles, ...(directRole ? [directRole] : [])])];
+      const isAdmin = allRoles.some(role => 
+        ['admin', 'root', 'administrator'].includes(role?.toLowerCase())
+      ) || (req.path?.startsWith('/admin')); // If accessing through admin route, consider as admin
       
       // Sanitize user input to prevent XSS
       const sanitizedMessage = sanitizeHtmlContent(message);
@@ -279,6 +346,52 @@ export class SupportTicketController {
         }
       );
       
+      // Send email notification if admin replied
+      if (isAdmin) {
+        try {
+          const usersCollection = db.collection('users');
+          const user = await usersCollection.findOne({ _id: new ObjectId(ticket.userId) });
+          
+          if (user && user.email) {
+            // Get admin user info for the email
+            const adminUser = await usersCollection.findOne({ _id: new ObjectId(req.userId) });
+            const adminName = adminUser?.firstName || adminUser?.email || 'Support Team';
+            
+            // Send email notification
+            const emailResult = await emailTriggerService.sendTemplateEmail(
+              EmailEventType.SUPPORT_TICKET_REPLY,
+              user.email,
+              {
+                userName: user.firstName || user.email,
+                ticketId: ticketId,
+                ticketSubject: ticket.subject,
+                adminMessage: sanitizedMessage,
+                adminName: adminName,
+                ticketUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/account/tickets/${ticketId}`,
+              },
+              {
+                isImportant: true,
+                skipPreferences: true, // Always send support ticket notifications
+              }
+            );
+            
+            // Check the result and log if email failed
+            if (!emailResult.success) {
+              console.error(`Failed to send support ticket reply email to ${user.email}:`, emailResult.error || 'Unknown error');
+              console.error('Ticket ID:', ticketId, 'User ID:', ticket.userId, 'Admin ID:', req.userId);
+            } else {
+              console.log(`✓ Support ticket reply email sent successfully to ${user.email} for ticket ${ticketId}`);
+            }
+          } else {
+            console.warn(`Cannot send support ticket reply email: User not found or email missing. Ticket ID: ${ticketId}, User ID: ${ticket.userId}`);
+          }
+        } catch (emailError) {
+          console.error('Error sending support ticket reply email:', emailError);
+          console.error('Ticket ID:', ticketId, 'User ID:', ticket.userId, 'Admin ID:', req.userId);
+          // Don't fail the request if email fails
+        }
+      }
+      
       res.json({
         ok: true,
         message: 'Reply sent successfully',
@@ -288,6 +401,52 @@ export class SupportTicketController {
       res.status(500).json({
         ok: false,
         error: 'Failed to send reply',
+      });
+    }
+  }
+
+  /**
+   * POST /api/tickets/:id/close
+   * Close a ticket (user can close their own tickets)
+   */
+  static async closeTicket(req: Request, res: Response): Promise<void> {
+    try {
+      const db = mongo.getDb();
+      const ticketsCollection = db.collection('support_tickets');
+      
+      const ticketId = req.params.id;
+      
+      const ticket = await ticketsCollection.findOne({ _id: new ObjectId(ticketId) });
+      if (!ticket) {
+        res.status(404).json({ ok: false, error: 'Ticket not found' });
+        return;
+      }
+      
+      // Check permissions - users can only close their own tickets
+      if (ticket.userId !== req.userId) {
+        res.status(403).json({ ok: false, error: 'Access denied' });
+        return;
+      }
+      
+      await ticketsCollection.updateOne(
+        { _id: new ObjectId(ticketId) },
+        {
+          $set: {
+            status: 'closed',
+            updatedAt: new Date(),
+          },
+        }
+      );
+      
+      res.json({
+        ok: true,
+        message: 'Ticket closed successfully',
+      });
+    } catch (error) {
+      console.error('Error closing ticket:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to close ticket',
       });
     }
   }

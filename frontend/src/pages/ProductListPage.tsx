@@ -4,26 +4,31 @@
  * Displays products with filters, pagination, and search.
  */
 
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useProducts } from '../hooks/useProducts';
 import { ProductCard } from '../components/ProductCard';
 import { ProductSkeleton } from './ProductSkeleton';
 import { Pagination } from '../components/Pagination';
 import { FilterSidebar } from '../components/FilterSidebar';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ToastContainer } from '../components/Toast';
+import { AISearchBar } from '../components/ai/AISearchBar';
 
 export function ProductListPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type?: 'success' | 'error' | 'warning' | 'info' }>>([]);
 
   const q = searchParams.get('q') || undefined;
-  const category = searchParams.get('category') || undefined;
+  // Get all category params (can be multiple)
+  const selectedCategories = useMemo(() => {
+    return searchParams.getAll('category').filter(Boolean);
+  }, [searchParams]);
   const page = parseInt(searchParams.get('page') || '1', 10);
 
   const { products, loading, error, total, pages, setPage } = useProducts({
     q,
-    category,
+    categories: selectedCategories,
     page,
     limit: 20,
   });
@@ -43,17 +48,17 @@ export function ProductListPage() {
         {/* Filters Sidebar */}
         <aside className="lg:w-64 flex-shrink-0">
           <FilterSidebar
-            categories={[]} // TODO: Fetch from API
-            selectedCategory={category}
-            onCategoryChange={(catId) => {
+            selectedCategories={selectedCategories}
+            onCategoryChange={(categoryIds) => {
               const params = new URLSearchParams(searchParams);
-              if (catId) {
-                params.set('category', catId);
-              } else {
-                params.delete('category');
-              }
+              // Remove all existing category params
+              params.delete('category');
+              // Add selected categories
+              categoryIds.forEach(catId => {
+                params.append('category', catId);
+              });
               params.set('page', '1');
-              window.location.search = params.toString();
+              setSearchParams(params);
             }}
           />
         </aside>
@@ -64,6 +69,9 @@ export function ProductListPage() {
             <h1 className="text-2xl font-bold text-gray-900 mb-2">
               {q ? `Search Results for "${q}"` : 'All Products'}
             </h1>
+            <div className="mt-4">
+              <AISearchBar />
+            </div>
             {total > 0 && (
               <p className="text-gray-600">
                 Showing {((page - 1) * 20) + 1} - {Math.min(page * 20, total)} of {total} results

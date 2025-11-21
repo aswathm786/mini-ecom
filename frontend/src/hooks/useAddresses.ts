@@ -4,7 +4,7 @@
  * Manages user addresses: list, create, update, delete, set default.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { csrfFetch } from '../lib/csrfFetch';
 import { Address } from '../hooks/useCheckout';
 
@@ -124,6 +124,11 @@ export function useAddresses(): UseAddressesResult {
       throw err;
     }
   }, []);
+
+  // Fetch addresses on mount
+  useEffect(() => {
+    fetchAddresses();
+  }, [fetchAddresses]);
 
   return {
     addresses,

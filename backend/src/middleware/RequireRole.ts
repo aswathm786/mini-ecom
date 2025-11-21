@@ -14,6 +14,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ObjectId } from 'mongodb';
 import { mongo } from '../db/Mongo';
+import { AuditLog } from '../types';
 
 interface Role {
   _id?: string;
@@ -30,7 +31,7 @@ interface UserRole {
 /**
  * Get all roles for a user from database
  */
-async function getUserRoles(userId: string): Promise<string[]> {
+export async function getUserRoles(userId: string): Promise<string[]> {
   const db = mongo.getDb();
   const userRolesCollection = db.collection<UserRole>('user_roles');
   const rolesCollection = db.collection<Role>('roles');
@@ -46,9 +47,15 @@ async function getUserRoles(userId: string): Promise<string[]> {
       roleNames.push(assignment.roleName);
     } else if (assignment.roleId) {
       // If roleName not stored, fetch from roles collection
-      const role = await rolesCollection.findOne({ _id: new ObjectId(assignment.roleId) });
-      if (role) {
-        roleNames.push(role.name);
+      try {
+        const roleId = typeof assignment.roleId === 'string' ? new ObjectId(assignment.roleId) : assignment.roleId;
+        const role = await rolesCollection.findOne({ _id: roleId });
+        if (role) {
+          roleNames.push(role.name);
+        }
+      } catch (error) {
+        // Invalid ObjectId, skip
+        console.error('Invalid roleId:', assignment.roleId);
       }
     }
   }
@@ -59,7 +66,7 @@ async function getUserRoles(userId: string): Promise<string[]> {
 /**
  * Get all permissions for a user
  */
-async function getUserPermissions(userId: string, userRoles: string[]): Promise<string[]> {
+export async function getUserPermissions(userId: string, userRoles: string[]): Promise<string[]> {
   const db = mongo.getDb();
   const rolesCollection = db.collection<Role>('roles');
   const usersCollection = db.collection('users');
@@ -119,6 +126,11 @@ export function requireRole(...allowedRoles: string[]) {
       const hasRole = userRoles.some(role => allowedRoles.includes(role));
       
       if (!hasRole) {
+        await logDeniedAccess(req, {
+          reason: 'missing_role',
+          requiredRoles: allowedRoles,
+          userRoles,
+        });
         res.status(403).json({
           ok: false,
           error: 'Insufficient permissions',
@@ -168,6 +180,12 @@ export function requirePermission(...requiredPermissions: string[]) {
       );
       
       if (!hasAllPermissions) {
+        await logDeniedAccess(req, {
+          reason: 'missing_permission',
+          requiredPermissions,
+          userRoles,
+          userPermissions,
+        });
         res.status(403).json({
           ok: false,
           error: 'Insufficient permissions',
@@ -189,7 +207,78 @@ export function requirePermission(...requiredPermissions: string[]) {
 
 /**
  * Require admin role (shorthand)
- * Checks for 'admin' or 'root' roles
+ * Checks for 'admin' or 'root' roles, or any user with permissions (custom roles)
  */
-export const requireAdmin = requireRole('admin', 'root');
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!req.user || !req.userId) {
+    res.status(401).json({
+      ok: false,
+      error: 'Authentication required',
+    });
+    return;
+  }
+  
+  try {
+    // Get user's roles from database
+    const userRoles = await getUserRoles(req.userId);
+    const directRole = (req.user as any).role;
+    if (directRole && !userRoles.includes(directRole)) {
+      userRoles.push(directRole);
+    }
+    
+    // Check if user has admin/root role
+    const hasAdminRole = userRoles.some(role => 
+      ['admin', 'root', 'administrator'].includes(role?.toLowerCase())
+    );
+    
+    // If user has admin role, allow access
+    if (hasAdminRole) {
+      return next();
+    }
+    
+    // Also allow users with any permissions (custom roles with permissions)
+    const userPermissions = await getUserPermissions(req.userId, userRoles);
+    if (userPermissions.length > 0) {
+      return next();
+    }
+    
+    // No admin role and no permissions - deny access
+    await logDeniedAccess(req, {
+      reason: 'missing_admin_role',
+      userRoles,
+      userPermissions,
+    });
+    res.status(403).json({
+      ok: false,
+      error: 'Admin access required',
+      code: 'FORBIDDEN',
+    });
+  } catch (error) {
+    console.error('Error checking admin access:', error);
+    res.status(500).json({
+      ok: false,
+      error: 'Internal server error',
+    });
+  }
+}
+
+async function logDeniedAccess(req: Request, metadata: Record<string, unknown>): Promise<void> {
+  try {
+    const db = mongo.getDb();
+    const audit = db.collection<AuditLog>('audit_logs');
+    await audit.insertOne({
+      actorId: req.userId,
+      actorType: 'user',
+      action: 'auth.access.denied',
+      objectType: 'route',
+      objectId: req.originalUrl,
+      metadata: { ...metadata, method: req.method },
+      ipAddress: req.ip || req.socket.remoteAddress,
+      userAgent: req.get('user-agent'),
+      createdAt: new Date(),
+    });
+  } catch (error) {
+    console.warn('Failed to log denied access', error);
+  }
+}
 

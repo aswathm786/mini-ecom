@@ -16,12 +16,17 @@ interface AdminLayoutProps {
 export function AdminLayout({ children }: AdminLayoutProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
 
-  // Check if user has admin role
+  // Check if user has admin role or any custom roles with admin permissions
   const hasAdminAccess = () => {
     if (!user) return false;
-    const roles = user.role ? [user.role] : [];
-    // Check for admin, root, or manager roles
-    return roles.some((r) => ['admin', 'root', 'manager'].includes(r?.toLowerCase()));
+    const roles = user.roles || (user.role ? [user.role] : []);
+    // Check for admin, root, or any role that has admin permissions
+    const hasAdminRole = roles.some((r) => 
+      ['admin', 'root', 'administrator'].includes(r?.toLowerCase())
+    );
+    // Also check if user has any permissions (means they have a role with permissions)
+    const hasPermissions = user.permissions && user.permissions.length > 0;
+    return hasAdminRole || hasPermissions;
   };
 
   // Show loading state while checking authentication
@@ -53,13 +58,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 lg:flex">
       <AdminNav />
-      <div className="lg:pl-64">
+      <div className="flex-1 w-full lg:pl-64">
         <main className="py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            {children}
-          </div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">{children}</div>
         </main>
       </div>
     </div>

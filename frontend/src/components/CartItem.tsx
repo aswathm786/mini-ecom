@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Button } from './Button';
+import { normalizeImageUrl, DEFAULT_PLACEHOLDER } from '../lib/imageUtils';
 
 export interface CartItem {
   id: string;
@@ -43,9 +44,12 @@ export const CartItemComponent: React.FC<CartItemProps> = ({
       <div className="w-20 h-20 flex-shrink-0 bg-gray-200 rounded-md overflow-hidden">
         {item.product_image ? (
           <img
-            src={item.product_image}
+            src={normalizeImageUrl(item.product_image) || DEFAULT_PLACEHOLDER}
             alt={item.product_name}
             className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = DEFAULT_PLACEHOLDER;
+            }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400">

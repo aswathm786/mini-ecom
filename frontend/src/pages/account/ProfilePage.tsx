@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { csrfFetch } from '../../lib/csrfFetch';
 import { Button } from '../../components/Button';
+import { PasswordInput } from '../../components/PasswordInput';
 import { validateEmail, validatePhone } from '../../lib/validators';
 import { ToastContainer } from '../../components/Toast';
 
@@ -17,6 +18,9 @@ interface UserProfile {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  role?: string;
+  roles?: string[];
+  permissions?: string[];
   twoFactorEnabled?: boolean;
   lastLogin?: {
     timestamp: string;
@@ -33,8 +37,15 @@ export function ProfilePage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type?: 'success' | 'error' | 'warning' | 'info' }>>([]);
   const [show2FASetup, setShow2FASetup] = useState(false);
-  const [twoFASecret, setTwoFASecret] = useState<{ secret: string; qrcode: string } | null>(null);
+  const [twoFASecret, setTwoFASecret] = useState<{ secret: string; qrCodeUrl?: string; inlineSvg?: string } | null>(null);
   const [twoFACode, setTwoFACode] = useState('');
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [changePasswordData, setChangePasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -128,21 +139,26 @@ export function ProfilePage() {
 
   const handleEnable2FA = async () => {
     try {
-      const response = await csrfFetch('/api/me/enable-2fa', {
+      const response = await csrfFetch('/api/auth/2fa/generate', {
         method: 'POST',
       });
 
-      if (response.ok && response.data) {
+      if (response.ok) {
+        const payload: any = response.data ?? response;
+        if (!payload?.secret) {
+          throw new Error('Failed to generate 2FA secret');
+        }
         setTwoFASecret({
-          secret: response.data.secret,
-          qrcode: response.data.qrcode_svg || '',
+          secret: payload.secret,
+          qrCodeUrl: payload.qrCodeUrl,
+          inlineSvg: payload.qrcode_svg,
         });
         setShow2FASetup(true);
       } else {
-        throw new Error(response.error || 'Failed to enable 2FA');
+        throw new Error(response.error || 'Failed to generate 2FA secret');
       }
     } catch (error) {
-      addToast(error instanceof Error ? error.message : 'Failed to enable 2FA', 'error');
+      addToast(error instanceof Error ? error.message : 'Failed to generate 2FA secret', 'error');
     }
   };
 
@@ -153,7 +169,7 @@ export function ProfilePage() {
     }
 
     try {
-      const response = await csrfFetch('/api/me/verify-2fa', {
+      const response = await csrfFetch('/api/auth/2fa/enable', {
         method: 'POST',
         body: JSON.stringify({ code: twoFACode }),
       });
@@ -163,7 +179,9 @@ export function ProfilePage() {
         setShow2FASetup(false);
         setTwoFACode('');
         setTwoFASecret(null);
+        // Reload profile and refresh user context
         await loadProfile();
+        await refreshUser();
       } else {
         throw new Error(response.error || 'Invalid verification code');
       }
@@ -178,18 +196,83 @@ export function ProfilePage() {
     }
 
     try {
-      const response = await csrfFetch('/api/me/disable-2fa', {
+      const response = await csrfFetch('/api/auth/2fa/disable', {
         method: 'POST',
       });
 
       if (response.ok) {
         addToast('2FA disabled successfully', 'success');
         await loadProfile();
+        await refreshUser();
       } else {
         throw new Error(response.error || 'Failed to disable 2FA');
       }
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Failed to disable 2FA', 'error');
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Client-side validation
+    if (!changePasswordData.currentPassword) {
+      addToast('Current password is required', 'error');
+      return;
+    }
+    
+    if (!changePasswordData.newPassword) {
+      addToast('New password is required', 'error');
+      return;
+    }
+    
+    if (changePasswordData.newPassword !== changePasswordData.confirmPassword) {
+      addToast('New passwords do not match', 'error');
+      return;
+    }
+    
+    if (changePasswordData.newPassword.length < 8) {
+      addToast('New password must be at least 8 characters', 'error');
+      return;
+    }
+
+    setChangingPassword(true);
+    setErrors({});
+
+    try {
+      const response = await csrfFetch('/api/me/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword: changePasswordData.currentPassword,
+          newPassword: changePasswordData.newPassword,
+        }),
+      });
+
+      if (response.ok) {
+        addToast('Password changed successfully', 'success');
+        setChangePasswordData({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        });
+        setShowChangePassword(false);
+      } else {
+        const errorMessage = response.error || response.details?.[0]?.message || 'Failed to change password';
+        addToast(errorMessage, 'error');
+        if (response.details && Array.isArray(response.details)) {
+          const newErrors: Record<string, string> = {};
+          response.details.forEach((detail: any) => {
+            if (detail.message) {
+              newErrors.password = detail.message;
+            }
+          });
+          setErrors(newErrors);
+        }
+      }
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Failed to change password', 'error');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -218,6 +301,49 @@ export function ProfilePage() {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Profile Settings</h1>
+
+      {/* Roles & Permissions Info */}
+      {/* Only show to non-customer users (admin, root, administrator, etc.) */}
+      {((profile.roles?.length > 0 || profile.permissions?.length > 0) && 
+        !(profile.roles?.length === 1 && profile.roles[0] === 'customer')) && (
+        <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-6">
+          <h3 className="text-sm font-medium text-green-800 mb-3">Roles & Permissions</h3>
+          <div className="text-sm text-green-700 space-y-2">
+            {profile.roles && profile.roles.length > 0 && (
+              <div>
+                <p className="font-medium mb-1">Roles:</p>
+                <div className="flex flex-wrap gap-2">
+                  {profile.roles.map((role, idx) => (
+                    <span key={idx} className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium">
+                      {role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {profile.permissions && profile.permissions.length > 0 && (
+              <div>
+                <p className="font-medium mb-1">Permissions ({profile.permissions.length}):</p>
+                <div className="flex flex-wrap gap-2">
+                  {profile.permissions.slice(0, 10).map((perm, idx) => (
+                    <span key={idx} className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                      {perm}
+                    </span>
+                  ))}
+                  {profile.permissions.length > 10 && (
+                    <span className="inline-block text-green-600 px-2 py-1 text-xs">
+                      +{profile.permissions.length - 10} more
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-green-600 mt-2">
+              If your roles or permissions were recently updated, please log out and log back in to refresh your access.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Last Login Info */}
       {profile.lastLogin && (
@@ -364,13 +490,22 @@ export function ProfilePage() {
                 <p className="text-sm text-gray-600 mb-2">
                   Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.):
                 </p>
-                {twoFASecret.qrcode && (
+                {twoFASecret.inlineSvg ? (
                   <div
                     className="inline-block p-2 bg-white rounded"
-                    dangerouslySetInnerHTML={{ __html: twoFASecret.qrcode }}
+                    dangerouslySetInnerHTML={{ __html: twoFASecret.inlineSvg }}
                   />
-                )}
-                {!twoFASecret.qrcode && (
+                ) : twoFASecret.qrCodeUrl ? (
+                  <div className="inline-block p-2 bg-white rounded">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                        twoFASecret.qrCodeUrl
+                      )}`}
+                      alt="2FA QR code"
+                      className="w-48 h-48"
+                    />
+                  </div>
+                ) : (
                   <div className="p-4 bg-white rounded text-sm text-gray-600">
                     Secret: <code className="font-mono">{twoFASecret.secret}</code>
                   </div>
@@ -405,6 +540,76 @@ export function ProfilePage() {
             </div>
           </div>
         )}
+
+        {/* Change Password */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-medium text-gray-900">Change Password</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Update your account password
+              </p>
+            </div>
+            {!showChangePassword && (
+              <Button variant="outline" onClick={() => setShowChangePassword(true)}>
+                Change Password
+              </Button>
+            )}
+          </div>
+
+          {showChangePassword && (
+            <form onSubmit={handleChangePassword} className="mt-4 space-y-4">
+              <PasswordInput
+                id="currentPassword"
+                label="Current Password"
+                value={changePasswordData.currentPassword}
+                onChange={(e) => setChangePasswordData({ ...changePasswordData, currentPassword: e.target.value })}
+                error={errors.currentPassword}
+                required
+              />
+
+              <PasswordInput
+                id="newPassword"
+                label="New Password"
+                value={changePasswordData.newPassword}
+                onChange={(e) => setChangePasswordData({ ...changePasswordData, newPassword: e.target.value })}
+                error={errors.newPassword || errors.password}
+                helperText="Password must meet the configured password policy requirements"
+                required
+              />
+
+              <PasswordInput
+                id="confirmPassword"
+                label="Confirm New Password"
+                value={changePasswordData.confirmPassword}
+                onChange={(e) => setChangePasswordData({ ...changePasswordData, confirmPassword: e.target.value })}
+                error={errors.confirmPassword}
+                required
+              />
+
+              <div className="flex gap-2">
+                <Button type="submit" variant="primary" isLoading={changingPassword}>
+                  Update Password
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowChangePassword(false);
+                    setChangePasswordData({
+                      currentPassword: '',
+                      newPassword: '',
+                      confirmPassword: '',
+                    });
+                    setErrors({});
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />

@@ -19,7 +19,6 @@ export async function bootstrapCsrf(): Promise<void> {
   // Check if token already exists in meta tag (server-side injected)
   const existingMeta = document.querySelector(CSRF_META_SELECTOR);
   if (existingMeta && existingMeta.getAttribute('content')) {
-    console.log('CSRF token found in meta tag (server-side injected)');
     return;
   }
 
@@ -41,7 +40,6 @@ export async function bootstrapCsrf(): Promise<void> {
 
     // Set token in meta tag
     setCsrfToken(token);
-    console.log('CSRF token bootstrapped successfully');
   } catch (error) {
     console.warn(
       'Failed to bootstrap CSRF token. If using server-side rendering,',

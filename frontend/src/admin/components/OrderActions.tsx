@@ -25,8 +25,7 @@ interface OrderActionsProps {
   onManualCapture: () => void;
   onRefund: (amount: number, reason: string) => void;
   onCreateShipment: (data: any) => void;
-  onGenerateInvoice: () => void;
-  onSendInvoice: () => void;
+  onDownloadInvoice?: () => void;
 }
 
 export function OrderActions({
@@ -35,8 +34,7 @@ export function OrderActions({
   onManualCapture,
   onRefund,
   onCreateShipment,
-  onGenerateInvoice,
-  onSendInvoice,
+  onDownloadInvoice,
 }: OrderActionsProps) {
   const { user } = useAuth();
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -125,25 +123,14 @@ export function OrderActions({
         </Button>
       )}
 
-      {/* Generate Invoice */}
-      {hasPermission('invoice.generate') && (
+      {/* Download Invoice */}
+      {hasPermission('invoice.download') && onDownloadInvoice && (
         <Button
           variant="outline"
           size="sm"
-          onClick={onGenerateInvoice}
+          onClick={onDownloadInvoice}
         >
-          Generate Invoice
-        </Button>
-      )}
-
-      {/* Send Invoice */}
-      {hasPermission('invoice.send') && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onSendInvoice}
-        >
-          Send Invoice
+          Download Invoice
         </Button>
       )}
 

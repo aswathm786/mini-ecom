@@ -19,7 +19,6 @@ export interface ThemeSettings {
   // Branding
   'theme.logo'?: string;
   'theme.favicon'?: string;
-  'theme.siteName'?: string;
   'theme.siteTagline'?: string;
   
   // Images
@@ -79,7 +78,19 @@ export function useThemeSettings(): UseThemeSettingsResult {
   const updateSettings = useCallback(async (updates: Partial<ThemeSettings>): Promise<boolean> => {
     try {
       await api.put('/theme-settings', updates);
-      setSettings((prev) => ({ ...prev, ...updates }));
+      // Update state: remove keys with null values, update others
+      setSettings((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev } as any;
+        Object.entries(updates).forEach(([key, value]) => {
+          if (value === null || value === undefined || value === '') {
+            delete updated[key];
+          } else {
+            updated[key] = value;
+          }
+        });
+        return updated as ThemeSettings;
+      });
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update theme settings');
@@ -110,15 +121,22 @@ export function useThemeSettings(): UseThemeSettingsResult {
       formData.append('image', file);
       formData.append('imageType', imageType);
       
+      console.log('Uploading image - type:', imageType, 'file:', file.name);
+      
       const response = await api.postForm<Record<string, string>>('/theme-settings/upload-image', formData);
+      console.log('Upload response:', response);
+      
       const imageUrl = response[imageType];
       if (imageUrl) {
         const settingKey = `theme.${imageType}` as keyof ThemeSettings;
+        console.log('Setting image URL for key:', settingKey, 'URL:', imageUrl);
         setSettings((prev) => ({ ...prev, [settingKey]: imageUrl }));
         return imageUrl;
       }
+      console.warn('No image URL in response for type:', imageType);
       return null;
     } catch (err) {
+      console.error('Error uploading image:', err);
       setError(err instanceof Error ? err.message : 'Failed to upload image');
       return null;
     }

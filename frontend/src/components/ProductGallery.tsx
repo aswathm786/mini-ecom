@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { normalizeImageUrl } from '../lib/imageUtils';
 
 interface ProductImage {
   filename: string;
@@ -35,7 +36,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
       {/* Main Image */}
       <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square">
         <img
-          src={mainImage.url}
+          src={normalizeImageUrl(mainImage.url)}
           alt={mainImage.alt || productName}
           className="w-full h-full object-cover"
         />
@@ -57,7 +58,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
               aria-label={`View ${productName} image ${index + 1}`}
             >
               <img
-                src={image.url}
+                src={normalizeImageUrl(image.url)}
                 alt={image.alt || `${productName} thumbnail ${index + 1}`}
                 className="w-full h-full object-cover"
                 loading="lazy"

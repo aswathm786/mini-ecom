@@ -195,7 +195,7 @@ Tests use Vitest and React Testing Library. Example test in `test/csrfFetch.test
 
 ## API Integration
 
-The frontend expects API endpoints at `/api/*`. In development, Vite proxies these to `http://localhost:3000` (configured in `vite.config.ts`). The proxy target is configurable via the `VITE_API_URL` environment variable.
+The frontend expects API endpoints at `/api/*`. In development, Vite proxies these to `http://localhost:3001` (configured in `vite.config.ts`). The proxy target is configurable via the `VITE_API_URL` environment variable.
 
 For production, ensure the API is accessible at the same origin or configure CORS appropriately.
 
@@ -204,8 +204,8 @@ For production, ensure the API is accessible at the same origin or configure COR
 Create `.env` for environment-specific config:
 
 ```env
-VITE_API_URL=http://localhost:3000
-# For Docker: VITE_API_URL=http://api:3000
+VITE_API_URL=http://localhost:3001
+# For Docker: VITE_API_URL=http://api:3001
 ```
 
 Access in code via `import.meta.env.VITE_API_URL`.
@@ -225,12 +225,19 @@ The app includes:
 - Focus indicators
 - Semantic HTML
 
-## Next Steps
+## 📚 Documentation
 
-This is Part C.1 - global setup. Future parts will add:
-- Product listings and detail pages
-- Shopping cart functionality
-- Checkout flow
-- Admin panel
-- Order management
-- And more...
+For complete documentation, see:
+
+- **[Getting Started](../docs/getting-started/README.md)** - Quick start guide
+- **[Installation](../docs/getting-started/installation.md)** - Detailed setup
+- **[Configuration](../docs/getting-started/configuration.md)** - Environment variables
+- **[Deployment](../docs/deployment/README.md)** - Production deployment
+- **[Developer Guide](../docs/developer/README.md)** - Development documentation
+- **[Features](../docs/features/)** - Feature documentation
+- **[Troubleshooting](../docs/operations/troubleshooting.md)** - Common issues
+- **[FAQ](../docs/FAQ.md)** - Frequently asked questions
+
+## Contributing
+
+See [Contributing Guide](../docs/developer/contributing.md) for development guidelines.

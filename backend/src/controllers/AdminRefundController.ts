@@ -21,6 +21,70 @@ const refundSchema = z.object({
 
 export class AdminRefundController {
   /**
+   * GET /api/admin/refunds
+   * List all refunds with pagination
+   */
+  static async listRefunds(req: Request, res: Response): Promise<void> {
+    try {
+      const { page = 1, limit = 20, status, orderId } = req.query;
+      const pageNum = parseInt(page as string, 10);
+      const limitNum = parseInt(limit as string, 10);
+      const skip = (pageNum - 1) * limitNum;
+      
+      const db = mongo.getDb();
+      const refundsCollection = db.collection('refunds');
+      
+      // Build query
+      const query: any = {};
+      if (status) {
+        query.status = status;
+      }
+      if (orderId) {
+        query.orderId = orderId;
+      }
+      
+      // Get total count
+      const total = await refundsCollection.countDocuments(query);
+      
+      // Get refunds
+      const refunds = await refundsCollection
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .toArray();
+      
+      const pages = Math.ceil(total / limitNum);
+      
+      res.json({
+        ok: true,
+        data: {
+          items: refunds.map(refund => ({
+            _id: refund._id?.toString(),
+            orderId: refund.orderId,
+            amount: refund.amount,
+            currency: refund.currency || 'INR',
+            reason: refund.reason,
+            status: refund.status,
+            gateway_refund_id: refund.gateway_refund_id,
+            createdAt: refund.createdAt,
+            updatedAt: refund.updatedAt,
+          })),
+          total,
+          page: pageNum,
+          pages,
+        },
+      });
+    } catch (error) {
+      console.error('Error listing refunds:', error);
+      res.status(500).json({
+        ok: false,
+        error: 'Failed to list refunds',
+      });
+    }
+  }
+
+  /**
    * POST /api/admin/orders/:id/refund
    * Create refund for an order
    */

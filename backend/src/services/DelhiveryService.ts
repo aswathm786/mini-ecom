@@ -10,6 +10,7 @@ import { Config } from '../config/Config';
 import { mongo } from '../db/Mongo';
 import { ObjectId } from 'mongodb';
 import { saveFile } from '../utils/fileUtils';
+import { settingsService } from './SettingsService';
 
 export interface DelhiveryRate {
   recommended: boolean;
@@ -75,10 +76,21 @@ class DelhiveryService {
     path: string,
     data?: any
   ): Promise<any> {
+    // Check if Delhivery is enabled
+    const isEnabled = await this.isEnabled();
+    if (!isEnabled) {
+      throw new Error('Delhivery is not enabled. Please enable it in admin settings.');
+    }
+
     const token = this.getToken();
+    const clientId = Config.get('DELHIVERY_CLIENT_ID', '');
     
     if (!token) {
-      throw new Error('Delhivery token not configured');
+      throw new Error('Delhivery token not configured. Please add Delhivery Token in admin settings.');
+    }
+    
+    if (!clientId) {
+      throw new Error('Delhivery Client ID not configured. Please add Delhivery Client ID in admin settings.');
     }
     
     const baseUrl = this.getBaseUrl();
@@ -139,6 +151,18 @@ class DelhiveryService {
   }
 
   /**
+   * Check if Delhivery is enabled
+   */
+  private async isEnabled(): Promise<boolean> {
+    try {
+      const shipping = await settingsService.getSetting('shipping');
+      return shipping?.providers?.delhivery?.enabled === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Get shipping rates
    */
   async getRates(
@@ -146,6 +170,11 @@ class DelhiveryService {
     pincodeTo: string,
     weight: number
   ): Promise<DelhiveryRate[]> {
+    // Check if provider is enabled
+    if (!(await this.isEnabled())) {
+      throw new Error('Delhivery shipping is currently disabled');
+    }
+
     try {
       const response = await this.makeRequest('GET', `/kinko/v1/invoice/charges/.json`, {
         pin: pincodeTo,
@@ -166,6 +195,11 @@ class DelhiveryService {
     orderId: string,
     pickupDetails: DelhiveryShipment
   ): Promise<Shipment> {
+    // Check if provider is enabled
+    if (!(await this.isEnabled())) {
+      throw new Error('Delhivery shipping is currently disabled');
+    }
+
     const db = mongo.getDb();
     const shipmentsCollection = db.collection<Shipment>('shipments');
     

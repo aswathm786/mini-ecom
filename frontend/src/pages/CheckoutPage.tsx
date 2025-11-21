@@ -5,10 +5,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../hooks/useCart';
-import { useCheckout, Address } from '../hooks/useCheckout';
+import { usePaymentMethods } from '../hooks/usePaymentMethods';
+import { useCheckout, Address, ShippingOption } from '../hooks/useCheckout';
 import { AddressSelector } from '../components/Checkout/AddressSelector';
 import { ShippingOptions } from '../components/Checkout/ShippingOptions';
 import { PaymentMethods } from '../components/Checkout/PaymentMethods';
@@ -18,8 +19,9 @@ import { ToastContainer } from '../components/Toast';
 import '../styles/checkout.css';
 
 export function CheckoutPage() {
-  const { isAuthenticated, user } = useAuth();
-  const { items, itemCount } = useCart();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const { items, itemCount, isLoading: cartLoading } = useCart();
+  const { methods: paymentMethods, loading: paymentMethodsLoading } = usePaymentMethods();
   const navigate = useNavigate();
   const {
     isProcessing,
@@ -33,6 +35,8 @@ export function CheckoutPage() {
   const [billingAddress, setBillingAddress] = useState<Address | null>(null);
   const [useSameAddress, setUseSameAddress] = useState(true);
   const [shippingMethod, setShippingMethod] = useState<string>('');
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
+  const [shippingCharge, setShippingCharge] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cod'>('razorpay');
   const [couponCode, setCouponCode] = useState<string>('');
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -40,19 +44,35 @@ export function CheckoutPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type?: 'success' | 'error' | 'warning' | 'info' }>>([]);
 
-  // Redirect if not authenticated
+  const enabledPaymentMethods = paymentMethods.filter(m => m.enabled);
+  const hasPaymentMethods = enabledPaymentMethods.length > 0;
+
+  // Wait for auth and cart to load before checking
   useEffect(() => {
+    if (authLoading || cartLoading) {
+      return; // Wait for loading to complete
+    }
+
+    // Redirect if not authenticated
     if (!isAuthenticated) {
       navigate('/login?redirect=/checkout');
+      return;
     }
-  }, [isAuthenticated, navigate]);
 
-  // Redirect if cart is empty
-  useEffect(() => {
+    // Redirect if cart is empty
     if (itemCount === 0) {
       navigate('/cart');
     }
-  }, [itemCount, navigate]);
+  }, [isAuthenticated, itemCount, navigate, authLoading, cartLoading]);
+
+  // Reset shipping when address changes
+  useEffect(() => {
+    if (shippingAddress?.pincode) {
+      setShippingMethod('');
+      setShippingCharge(0);
+      setShippingOptions([]);
+    }
+  }, [shippingAddress?.pincode]);
 
   const addToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
     const id = Date.now().toString();
@@ -102,6 +122,7 @@ export function CheckoutPage() {
         shipping_address: shippingAddress,
         billing_address: useSameAddress ? shippingAddress : billingAddress || shippingAddress,
         shipping_method: shippingMethod,
+        shipping_cost: shippingCharge,
         payment_method: paymentMethod,
         coupon_code: couponCode || undefined,
       });
@@ -152,8 +173,65 @@ export function CheckoutPage() {
     }
   };
 
+  // Show loading state while checking auth and cart
+  if (authLoading || cartLoading || paymentMethodsLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-48 mb-8"></div>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-32 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if redirecting
   if (!isAuthenticated || itemCount === 0) {
     return null; // Will redirect
+  }
+
+  // Block checkout if no payment methods are enabled
+  if (!hasPaymentMethods) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
+        
+        <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
+          <svg
+            className="mx-auto h-12 w-12 text-red-400 mb-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Checkout Unavailable</h2>
+          <p className="text-gray-700 mb-6">
+            We're sorry, but checkout is currently unavailable. No payment methods are enabled at this time.
+          </p>
+          <p className="text-sm text-gray-600 mb-6">
+            Please contact our support team or try again later.
+          </p>
+          <div className="flex justify-center gap-4">
+            <Link to="/cart">
+              <Button variant="outline">Back to Cart</Button>
+            </Link>
+            <Link to="/products">
+              <Button variant="primary">Continue Shopping</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -206,7 +284,28 @@ export function CheckoutPage() {
               <ShippingOptions
                 pincode={shippingAddress.pincode}
                 selected={shippingMethod}
-                onSelect={setShippingMethod}
+                onSelect={(service, charge) => {
+                  setShippingMethod(service);
+                  if (charge !== undefined) {
+                    setShippingCharge(charge);
+                  } else {
+                    // Fallback: find from options if charge not provided
+                    const selectedOption = shippingOptions.find(opt => opt.service === service);
+                    if (selectedOption) {
+                      setShippingCharge(selectedOption.charge);
+                    }
+                  }
+                }}
+                onOptionsLoaded={(options) => {
+                  setShippingOptions(options);
+                  // If a shipping method is already selected, update the charge
+                  if (shippingMethod) {
+                    const selectedOption = options.find(opt => opt.service === shippingMethod);
+                    if (selectedOption) {
+                      setShippingCharge(selectedOption.charge);
+                    }
+                  }
+                }}
               />
               {validationErrors.shippingMethod && (
                 <p className="mt-2 text-sm text-red-600">{validationErrors.shippingMethod}</p>
@@ -272,6 +371,7 @@ export function CheckoutPage() {
         <div className="lg:col-span-1">
           <div className="lg:sticky lg:top-4">
             <OrderSummary
+              shippingCharge={shippingCharge}
               couponCode={couponCode}
               onCouponApplied={(code, discount) => {
                 setCouponCode(code);
@@ -287,3 +387,4 @@ export function CheckoutPage() {
   );
 }
 
+export default CheckoutPage;

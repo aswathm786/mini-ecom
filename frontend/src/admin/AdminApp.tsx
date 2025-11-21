@@ -10,3 +10,5 @@ export function AdminApp() {
   return <AdminRoutes />;
 }
 
+export default AdminApp;
+

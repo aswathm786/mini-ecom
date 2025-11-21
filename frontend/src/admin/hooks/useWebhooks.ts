@@ -4,7 +4,7 @@
  * Manages webhook events: list, view, retry.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAdminApi } from './useAdminApi';
 
 export interface WebhookEvent {
@@ -50,8 +50,17 @@ export function useWebhooks(params: UseWebhooksParams = {}): UseWebhooksResult {
   const [page, setPage] = useState(params.page || 1);
   const [pages, setPages] = useState(0);
   const [filters, setFilters] = useState<Partial<UseWebhooksParams>>(params);
+  
+  // Use ref to track if we're currently fetching to prevent concurrent requests
+  const isFetchingRef = useRef(false);
 
   const fetchEvents = useCallback(async () => {
+    // Prevent concurrent requests
+    if (isFetchingRef.current) {
+      return;
+    }
+    
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -64,16 +73,24 @@ export function useWebhooks(params: UseWebhooksParams = {}): UseWebhooksResult {
       if (filters.eventType) queryParams.event_type = filters.eventType;
       if (filters.source) queryParams.source = filters.source;
 
-      const data = await api.get<{ items: WebhookEvent[]; total: number; pages: number }>('/webhooks', queryParams);
-      setEvents(data.items);
-      setTotal(data.total);
-      setPages(data.pages);
+      const data = await api.get<{ items?: WebhookEvent[]; total?: number; pages?: number }>('/webhooks', queryParams);
+      setEvents(data.items ?? []);
+      setTotal(data.total ?? 0);
+      setPages(data.pages ?? 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch webhook events');
+      // Only set error if it's not a network error that would cause infinite retries
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch webhook events';
+      if (!errorMessage.includes('ERR_INSUFFICIENT_RESOURCES') && !errorMessage.includes('Failed to fetch')) {
+        setError(errorMessage);
+      } else {
+        console.error('Network error fetching webhook events:', err);
+        setError('Network error. Please refresh the page.');
+      }
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [api, page, filters, params.limit]);
+  }, [api, page, filters.status, filters.eventType, filters.source, params.limit]);
 
   useEffect(() => {
     fetchEvents();

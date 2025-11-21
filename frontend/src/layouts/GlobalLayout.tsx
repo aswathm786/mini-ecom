@@ -5,26 +5,61 @@
  * Includes mobile-responsive menu and accessibility features.
  */
 
-import { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { ReactNode, useEffect } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useStoreSettings } from '../hooks/useStoreSettings';
+import { useCart } from '../hooks/useCart';
 import { Logo } from '../components/Logo';
 import { Nav } from '../components/Nav';
 import { IconCart } from '../components/IconCart';
-import { AIChat } from '../components/AIChat';
+import { FiHome, FiGrid, FiShoppingCart, FiUser, FiSettings, FiLogIn, FiLogOut } from 'react-icons/fi';
 
 interface GlobalLayoutProps {
   children: ReactNode;
 }
 
 export function GlobalLayout({ children }: GlobalLayoutProps) {
-  const { user, isAuthenticated } = useAuth();
-  const { settings } = useTheme();
+  const { user, isAuthenticated, logout } = useAuth();
+  const { settings: themeSettings } = useTheme();
+  const { settings: storeSettings } = useStoreSettings();
+  const { itemCount } = useCart();
   const location = useLocation();
+  const navigate = useNavigate();
   
-  const siteName = settings?.['theme.siteName'] || 'Handmade Harmony';
-  const siteTagline = settings?.['theme.siteTagline'] || 'Beautiful handmade products';
+  // Use store settings from store branding page first, fallback to theme settings, then default
+  // This ensures the tab title uses the store name configured in the admin store branding page
+  const siteName = storeSettings?.name || themeSettings?.['store.name'] || themeSettings?.['site.name'] || 'Handmade Harmony';
+  const siteTagline = storeSettings?.tagline || themeSettings?.['theme.siteTagline'] || 'Beautiful handmade products';
+  const storeLogo = storeSettings?.logo;
+  const storeFavicon = storeSettings?.favicon;
+
+  // Update browser tab title with store name from store branding page
+  // This will automatically update when store settings change
+  useEffect(() => {
+    if (siteName) {
+      document.title = siteName;
+    }
+  }, [siteName]);
+
+  // Update favicon from store branding settings
+  useEffect(() => {
+    if (storeFavicon) {
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = storeFavicon;
+    }
+  }, [storeFavicon]);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -42,9 +77,9 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-3" aria-label={`${siteName} Home`}>
-              {settings?.['theme.logo'] ? (
+              {storeLogo ? (
                 <img 
-                  src={settings['theme.logo']} 
+                  src={storeLogo} 
                   alt={siteName}
                   className="h-10 w-auto object-contain"
                 />
@@ -63,62 +98,103 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex md:items-center md:space-x-6" aria-label="Main navigation">
-              <Link
+              <NavLink
                 to="/"
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  location.pathname === '/'
-                    ? 'bg-opacity-10'
-                    : 'hover:opacity-75 hover:bg-gray-50'
-                }`}
-                style={location.pathname === '/' ? {
-                  color: 'var(--color-primary, #dc2626)',
-                  backgroundColor: 'var(--color-primary, #dc2626)',
-                } : {
-                  color: 'var(--color-text, #374151)',
-                }}
+                end
+                className={({ isActive }) =>
+                  [
+                    'px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1',
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-primary-600',
+                  ].join(' ')
+                }
               >
+                <FiHome className="h-4 w-4" />
                 Home
-              </Link>
-              <Link
-                to="/#categories"
-                className="px-3 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-75 hover:bg-gray-50"
-                style={{ color: 'var(--color-text, #374151)' }}
+              </NavLink>
+              <NavLink
+                to="/categories"
+                className={({ isActive }) =>
+                  [
+                    'px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1',
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-primary-600',
+                  ].join(' ')
+                }
               >
+                <FiGrid className="h-4 w-4" />
                 Categories
-              </Link>
-              <Link
+              </NavLink>
+              <NavLink
                 to="/cart"
-                className="px-3 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-75 hover:bg-gray-50 flex items-center gap-1"
-                style={{ color: 'var(--color-text, #374151)' }}
+                className={({ isActive }) =>
+                  [
+                    'px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1',
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-primary-600',
+                  ].join(' ')
+                }
               >
-                <IconCart />
+                <span className="relative">
+                  <IconCart />
+                  {itemCount > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center min-w-[1.25rem]">
+                      {itemCount > 99 ? '99+' : itemCount}
+                    </span>
+                  )}
+                </span>
                 Cart
-              </Link>
+              </NavLink>
               {isAuthenticated ? (
                 <>
-                  <Link
+                  <NavLink
                     to="/account"
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      location.pathname === '/account'
-                        ? 'bg-opacity-10'
-                        : 'hover:opacity-75 hover:bg-gray-50'
-                    }`}
-                    style={location.pathname === '/account' ? {
-                      color: 'var(--color-primary, #dc2626)',
-                      backgroundColor: 'var(--color-primary, #dc2626)',
-                    } : {
-                      color: 'var(--color-text, #374151)',
-                    }}
+                    className={({ isActive }) =>
+                      [
+                        'px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1',
+                        isActive || location.pathname.startsWith('/account/')
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-700 hover:bg-gray-50 hover:text-primary-600',
+                      ].join(' ')
+                    }
                   >
+                    <FiUser className="h-4 w-4" />
                     Account
-                  </Link>
+                  </NavLink>
+                  {(user?.role === 'admin' || user?.role === 'root' || (user?.roles && user.roles.some(r => ['admin', 'root', 'administrator'].includes(r?.toLowerCase()))) || (user?.permissions && user.permissions.length > 0)) && (
+                    <NavLink
+                      to="/admin"
+                      className={({ isActive }) =>
+                        [
+                          'px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1',
+                          isActive || location.pathname.startsWith('/admin')
+                            ? 'bg-primary-600 text-white'
+                            : 'text-gray-700 hover:bg-gray-50 hover:text-primary-600',
+                        ].join(' ')
+                      }
+                    >
+                      <FiSettings className="h-4 w-4" />
+                      Admin
+                    </NavLink>
+                  )}
+                  <button
+                    onClick={handleLogout}
+                    className="px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1 text-gray-700 hover:bg-gray-50 hover:text-primary-600"
+                  >
+                    <FiLogOut className="h-4 w-4" />
+                    Logout
+                  </button>
                 </>
               ) : (
                 <Link
                   to="/login"
-                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-75 hover:bg-gray-50"
+                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-75 hover:bg-gray-50 flex items-center gap-1"
                   style={{ color: 'var(--color-text, #374151)' }}
                 >
+                  <FiLogIn className="h-4 w-4" />
                   Login
                 </Link>
               )}
@@ -131,26 +207,26 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
       </header>
 
       {/* Main Content */}
-      <main id="main-content" className="flex-1">
+      <main
+        id="main-content"
+        className={`flex-1 ${location.pathname.startsWith('/admin') ? 'bg-gray-50' : ''}`}
+      >
         {children}
       </main>
 
-      {/* AI Chat Widget */}
-      <AIChat />
-
       {/* Footer */}
       <footer 
-        className="mt-auto"
+        className={`mt-auto ${location.pathname.startsWith('/admin') ? 'lg:pl-64' : ''}`}
         style={{ 
-          backgroundColor: settings?.['theme.secondary'] || '#111827',
+          backgroundColor: themeSettings?.['theme.secondary'] || '#111827',
           color: '#FFFFFF'
         }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          {settings?.['theme.footerImage'] && (
+          {themeSettings?.['theme.footerImage'] && (
             <div className="mb-8">
               <img 
-                src={settings['theme.footerImage']} 
+                src={themeSettings['theme.footerImage']} 
                 alt="Footer"
                 className="w-full h-48 object-cover rounded-lg"
               />
@@ -205,7 +281,7 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-gray-800 text-center text-sm text-gray-400">
-            <p>&copy; {new Date().getFullYear()} Handmade Harmony. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} {siteName}. All rights reserved.</p>
           </div>
         </div>
       </footer>

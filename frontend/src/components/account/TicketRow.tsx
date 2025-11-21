@@ -37,7 +37,7 @@ export function TicketRow({ ticket }: TicketRowProps) {
             </span>
           </div>
           <div className="text-sm text-gray-600">
-            {ticket.messages.length} message{ticket.messages.length !== 1 ? 's' : ''} •{' '}
+            {ticket.messages?.length || 0} message{(ticket.messages?.length || 0) !== 1 ? 's' : ''} •{' '}
             {new Date(ticket.createdAt).toLocaleDateString('en-IN', {
               year: 'numeric',
               month: 'short',

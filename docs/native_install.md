@@ -304,7 +304,7 @@ MONGO_URI=mongodb://localhost:27017/miniecom
 
 # Application URLs
 APP_URL=http://localhost:5173  # Frontend dev server
-API_URL=http://localhost:3000  # Backend server
+API_URL=http://localhost:3001  # Backend server
 
 # File uploads (relative to backend directory)
 UPLOAD_DIR=./storage/uploads
@@ -312,7 +312,7 @@ UPLOAD_DIR=./storage/uploads
 
 ### Port Configuration
 
-**Backend:** Default port 3000 (change in `backend/src/server.ts` or via `PORT` env var)
+**Backend:** Default port 3001 (change in `backend/src/config/Config.ts` or via `PORT` env var)
 
 **Frontend:** Default port 5173 for Vite dev server (change in `frontend/vite.config.ts`)
 
